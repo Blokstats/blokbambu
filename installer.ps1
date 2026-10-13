@@ -18,7 +18,7 @@ function Installer-BlokBambu {
     $fichier    = Join-Path $donnees "compteur.py"
     $demarrage = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
     $raccourci = Join-Path ([Environment]::GetFolderPath("Desktop")) "BlokBambu.url"
-    $fichiers  = "compteur.py", "page.html", "logo.png", "icone.png"
+    $fichiers  = "compteur.py", "page.html", "police.woff2"
 
     function Arreter {
         Get-CimInstance Win32_Process -Filter "Name like 'python%'" |

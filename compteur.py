@@ -310,10 +310,9 @@ class Veilleur:
 # ---------------------------------------------------------------- page
 
 ICI = os.path.dirname(os.path.abspath(__file__))
-# La page et ses images sont des fichiers posés à côté de ce programme.
-FICHIERS_PAGE = {"/": ("page.html", "text/html; charset=utf-8"),
-                 "/logo.png": ("logo.png", "image/png"), "/icone.png": ("icone.png", "image/png")}
-POLICES = {"/police/heavy": "PPMonumentExtended-Heavy", "/police/bold": "PPMonumentExtended-Bold"}
+# La page et la police de ses titres sont des fichiers posés à côté de ce programme.
+FICHIERS_PAGE = {"/": ("page.html", "text/html; charset=utf-8", "no-store"),
+                 "/police.woff2": ("police.woff2", "font/woff2", "max-age=86400")}
 
 MARQUES = ["Bambu Lab", "eSUN", "Polymaker", "Sunlu", "Elegoo", "Creality", "Anycubic", "Overture", "Prusament",
            "Eryone", "Jayo", "Kingroon", "Geeetech", "R3D", "Rosa3D", "ColorFabb", "Fillamentum", "Arianeplast",
@@ -358,23 +357,6 @@ def marques_proposees(donnees):
     """Les marques de base, puis celles ajoutées à la main."""
     ajoutees = [m for m in lire(donnees, "marques.json", []) if isinstance(m, str)]
     return MARQUES + [m for m in ajoutees if m not in MARQUES]
-
-
-def police_installee(nom):
-    """Le fichier d'une police installée sur cet ordinateur, ou None. Elle n'est jamais livrée avec BlokBambu."""
-    if MAC:
-        dossiers = ["~/Library/Fonts", "/Library/Fonts"]
-    elif WINDOWS:
-        dossiers = [os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "Windows", "Fonts"),
-                    os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts")]
-    else:
-        dossiers = ["~/.fonts", "~/.local/share/fonts", "/usr/share/fonts", "/usr/local/share/fonts"]
-    for dossier in dossiers:
-        for extension in (".otf", ".ttf"):
-            chemin = os.path.join(os.path.expanduser(dossier), nom + extension)
-            if os.path.isfile(chemin):
-                return chemin
-    return None
 
 
 def etat_page(donnees, imprimante=None):
@@ -512,14 +494,8 @@ def lancer_serveur(donnees, port, imprimante=None):
             elif chemin == "/saut.js":
                 self.repondre(200, b'location.replace("http://127.0.0.1:%d/");' % port, "text/javascript")
             elif chemin in FICHIERS_PAGE:
-                nom, type_mime = FICHIERS_PAGE[chemin]
-                self.fichier(os.path.join(ICI, nom), type_mime)
-            elif chemin in POLICES:
-                police = police_installee(POLICES[chemin])
-                if police:
-                    self.fichier(police, "font/otf" if police.endswith(".otf") else "font/ttf", "max-age=86400")
-                else:
-                    self.repondre(404, b"police absente")
+                nom, type_mime, cache = FICHIERS_PAGE[chemin]
+                self.fichier(os.path.join(ICI, nom), type_mime, cache)
             else:
                 self.repondre(404, b"introuvable")
 

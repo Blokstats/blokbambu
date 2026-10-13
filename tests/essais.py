@@ -155,7 +155,7 @@ def essais_a_part():
         print("Page")
         verifier("la page répond", attendre(lambda: page(port)[0] == 200))
         verifier("la page porte le nom BlokBambu", "<title>BlokBambu</title>" in page(port)[1])
-        verifier("le logo et l'icône sont servis", page(port, "/logo.png")[0] == 200 and page(port, "/icone.png")[0] == 200)
+        verifier("la police des titres est servie", page(port, "/police.woff2")[0] == 200)
         verifier("les données de la page sont servies", etat(port)["resume"]["impressions"] == 0)
 
         print("Impression lancée depuis Bambu Studio")

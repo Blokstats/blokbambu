@@ -12,12 +12,15 @@ Tout tourne sur votre ordinateur. Rien n'est envoyé sur Internet, et BlokBambu 
 
 ## Ce qu'il faut
 
+- Un ordinateur sous macOS, Windows 10 ou 11, ou Linux.
 - Bambu Studio, déjà connecté à votre imprimante.
 - L'ordinateur et l'imprimante sur le même réseau, pour l'alerte de bobine.
 
 ## Installer
 
-La page s'ouvre toute seule à la fin de l'installation. Pour mettre à jour plus tard, relancez la même ligne : vos données sont gardées.
+Une seule ligne à coller. La page s'ouvre toute seule à la fin, et BlokBambu se relance ensuite à chaque ouverture de session : il n'y a rien à lancer à la main.
+
+Pour mettre à jour plus tard, relancez la même ligne : vos données sont gardées.
 
 ### Mac
 
@@ -59,7 +62,12 @@ BlokBambu apparaît dans le menu des applications.
 3. Imprimez comme d'habitude depuis Bambu Studio : chaque impression apparaît dans la page, sans la recharger, et se déduit de la bobine de la même couleur.
 4. Quand vous posez une bobine neuve, une fenêtre vous le rappelle : cliquez **Nouvelle bobine** sur la page.
 
-Une bobine passe en rouge quand il lui reste moins de 100 g.
+Sur la page :
+
+- **A1 à A4** sur une bobine : son emplacement sur l'AMS de l'imprimante.
+- **Bientôt vide**, en rose : il reste moins de 100 g.
+- **Imprimante connectée**, en haut à droite : l'alerte de bobine est active.
+- Pour corriger un reste qui a dérivé, cliquez **Nouvelle bobine** et saisissez le poids réel.
 
 ## À savoir
 
@@ -69,6 +77,13 @@ Une bobine passe en rouge quand il lui reste moins de 100 g.
 - L'alerte de bobine demande que l'ordinateur soit allumé et sur le même réseau que l'imprimante.
 - BlokBambu suit une imprimante : celle choisie en dernier dans Bambu Studio.
 - La version Mac sert tous les jours. Les versions Windows et Linux passent les mêmes essais automatiques, mais n'ont pas encore tourné avec une vraie imprimante : dites-moi si quelque chose coince.
+
+## Si quelque chose coince
+
+- **La page ne s'ouvre pas.** Relancez la ligne d'installation : elle relance BlokBambu sans toucher à vos données.
+- **« Imprimante injoignable ».** Vérifiez que l'imprimante est allumée et sur le même réseau, puis ouvrez Bambu Studio une fois : c'est par lui que BlokBambu apprend l'adresse de l'imprimante. Sur Mac, vérifiez aussi que « Python » est autorisé dans Réglages Système › Confidentialité et sécurité › Réseau local.
+- **Une impression n'apparaît pas.** Elle doit être lancée depuis Bambu Studio, sur cet ordinateur, avec le bouton « Imprimer ». Elle apparaît quelques secondes après l'envoi.
+- **Autre chose.** BlokBambu tient un journal, `compteur.log`, dans son dossier de données (indiqué dans « Retirer » ci-dessous). Envoyez-le-moi.
 
 ## Retirer
 
@@ -102,4 +117,13 @@ BlokBambu est un petit programme en Python (`compteur.py`, sans dépendance) qui
 
 Le code d'accès n'est recopié nulle part, et aucune donnée ne quitte l'ordinateur.
 
-Les essais (`tests/essais.py`) tournent sur macOS, Windows et Linux à chaque modification, avec une fausse imprimante.
+Les titres de la page sont en Archivo, une police libre (SIL Open Font License, voir `LICENCE-police.txt`).
+
+## Dans ce dépôt
+
+| Fichier | Rôle |
+|---|---|
+| `compteur.py` | le programme : repère les impressions, écoute l'imprimante, sert la page |
+| `page.html`, `police.woff2` | la page et la police de ses titres |
+| `installer.sh`, `installer.ps1`, `installer-linux.sh` | les installeurs pour Mac, Windows et Linux |
+| `tests/` | les essais, rejoués sur macOS, Windows et Linux à chaque modification, avec une fausse imprimante |

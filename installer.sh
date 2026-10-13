@@ -15,7 +15,7 @@ DEPOT="https://raw.githubusercontent.com/Blokstats/blokbambu/main"
 DONNEES="$HOME/Library/Application Support/BlokBambu"
 AGENT="$HOME/Library/LaunchAgents/$NOM.plist"
 PAGE="BlokBambu.html"
-FICHIERS=(compteur.py page.html logo.png icone.png)
+FICHIERS=(compteur.py page.html police.woff2)
 BAMBU="$HOME/Library/Application Support/BambuStudio/BambuStudio.conf"
 
 [[ "$(uname)" == "Darwin" ]] || { echo "Cet installeur est celui du Mac. Pour Linux : installer-linux.sh ; pour Windows : installer.ps1."; exit 1; }
