@@ -13,6 +13,7 @@ PAGE="http://127.0.0.1:$PORT/"
 DONNEES="${XDG_DATA_HOME:-$HOME/.local/share}/blokbambu"
 DEMARRAGE="${XDG_CONFIG_HOME:-$HOME/.config}/autostart/blokbambu.desktop"
 MENU="${XDG_DATA_HOME:-$HOME/.local/share}/applications/blokbambu.desktop"
+FICHIERS="compteur.py page.html logo.png icone.png"
 
 [ "$(uname)" = "Linux" ] || { echo "Cet installeur est celui de Linux. Pour Mac : installer.sh ; pour Windows : installer.ps1."; exit 1; }
 
@@ -47,19 +48,22 @@ fi
 
 mkdir -p "$DONNEES" "$(dirname "$DEMARRAGE")" "$(dirname "$MENU")"
 
-# compteur.py : celui posé à côté de ce script (dépôt téléchargé), sinon celui du dépôt en ligne.
+# Les fichiers de BlokBambu : ceux posés à côté de ce script (dépôt téléchargé), sinon ceux du dépôt
+# en ligne. Ils ne remplacent les anciens qu'une fois tous arrivés.
 ICI=$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)
-if [ -n "$ICI" ] && [ -f "$ICI/compteur.py" ] && [ -f "$ICI/installer-linux.sh" ]; then
-  cp "$ICI/compteur.py" "$DONNEES/compteur.py.nouveau"
-elif command -v curl >/dev/null 2>&1; then
-  curl -fsSL "$DEPOT/compteur.py" -o "$DONNEES/compteur.py.nouveau" \
-    || { echo "Téléchargement impossible : vérifiez la connexion à Internet."; exit 1; }
-else
-  wget -q "$DEPOT/compteur.py" -O "$DONNEES/compteur.py.nouveau" \
-    || { echo "Téléchargement impossible : vérifiez la connexion à Internet."; exit 1; }
-fi
+for f in $FICHIERS; do
+  if [ -n "$ICI" ] && [ -f "$ICI/compteur.py" ] && [ -f "$ICI/installer-linux.sh" ]; then
+    cp "$ICI/$f" "$DONNEES/$f.nouveau"
+  elif command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$DEPOT/$f" -o "$DONNEES/$f.nouveau" \
+      || { echo "Téléchargement impossible : vérifiez la connexion à Internet."; exit 1; }
+  else
+    wget -q "$DEPOT/$f" -O "$DONNEES/$f.nouveau" \
+      || { echo "Téléchargement impossible : vérifiez la connexion à Internet."; exit 1; }
+  fi
+done
 arreter
-mv "$DONNEES/compteur.py.nouveau" "$DONNEES/compteur.py"
+for f in $FICHIERS; do mv "$DONNEES/$f.nouveau" "$DONNEES/$f"; done
 
 # Démarrage à chaque ouverture de session.
 cat > "$DEMARRAGE" <<FIN

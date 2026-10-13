@@ -18,6 +18,7 @@ function Installer-BlokBambu {
     $fichier    = Join-Path $donnees "compteur.py"
     $demarrage = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
     $raccourci = Join-Path ([Environment]::GetFolderPath("Desktop")) "BlokBambu.url"
+    $fichiers  = "compteur.py", "page.html", "logo.png", "icone.png"
 
     function Arreter {
         Get-CimInstance Win32_Process -Filter "Name like 'python%'" |
@@ -72,20 +73,24 @@ function Installer-BlokBambu {
     if (-not (Test-Path $pythonw)) { $pythonw = $python }
 
     New-Item -ItemType Directory -Force -Path $donnees | Out-Null
-    $nouveau = "$fichier.nouveau"
-    if ($env:BLOKBAMBU_SOURCE) {
-        Copy-Item $env:BLOKBAMBU_SOURCE $nouveau -Force
-    } else {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-        try {
-            Invoke-WebRequest -UseBasicParsing "$depot/compteur.py" -OutFile $nouveau
-        } catch {
-            Write-Host "Téléchargement impossible : vérifiez la connexion à Internet."
-            return
+    # Les fichiers de BlokBambu : ceux du dossier indiqué par BLOKBAMBU_SOURCE (essais), sinon ceux du
+    # dépôt en ligne. Ils ne remplacent les anciens qu'une fois tous arrivés.
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    foreach ($nom in $fichiers) {
+        $nouveau = Join-Path $donnees "$nom.nouveau"
+        if ($env:BLOKBAMBU_SOURCE) {
+            Copy-Item (Join-Path $env:BLOKBAMBU_SOURCE $nom) $nouveau -Force
+        } else {
+            try {
+                Invoke-WebRequest -UseBasicParsing "$depot/$nom" -OutFile $nouveau
+            } catch {
+                Write-Host "Téléchargement impossible : vérifiez la connexion à Internet."
+                return
+            }
         }
     }
     Arreter
-    Move-Item $nouveau $fichier -Force
+    foreach ($nom in $fichiers) { Move-Item (Join-Path $donnees "$nom.nouveau") (Join-Path $donnees $nom) -Force }
 
     # Démarrage à chaque ouverture de session, et lancement tout de suite.
     if (-not (Test-Path $demarrage)) { New-Item -Path $demarrage -Force | Out-Null }

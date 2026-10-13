@@ -15,6 +15,7 @@ DEPOT="https://raw.githubusercontent.com/Blokstats/blokbambu/main"
 DONNEES="$HOME/Library/Application Support/BlokBambu"
 AGENT="$HOME/Library/LaunchAgents/$NOM.plist"
 PAGE="BlokBambu.html"
+FICHIERS=(compteur.py page.html logo.png icone.png)
 BAMBU="$HOME/Library/Application Support/BambuStudio/BambuStudio.conf"
 
 [[ "$(uname)" == "Darwin" ]] || { echo "Cet installeur est celui du Mac. Pour Linux : installer-linux.sh ; pour Windows : installer.ps1."; exit 1; }
@@ -60,15 +61,18 @@ fi
 
 mkdir -p "$DONNEES" "$HOME/Library/LaunchAgents"
 
-# compteur.py : celui posé à côté de ce script (dépôt téléchargé), sinon celui du dépôt en ligne.
+# Les fichiers de BlokBambu : ceux posés à côté de ce script (dépôt téléchargé), sinon ceux du dépôt
+# en ligne. Ils ne remplacent les anciens qu'une fois tous arrivés.
 ICI=${0:A:h}
-if [[ -f "$ICI/compteur.py" && -f "$ICI/installer.sh" ]]; then
-  cp "$ICI/compteur.py" "$DONNEES/compteur.py"
-else
-  curl -fsSL "$DEPOT/compteur.py" -o "$DONNEES/compteur.py.telecharge" \
-    || { echo "Téléchargement impossible : vérifiez la connexion à Internet."; exit 1; }
-  mv "$DONNEES/compteur.py.telecharge" "$DONNEES/compteur.py"
-fi
+for f in $FICHIERS; do
+  if [[ -f "$ICI/compteur.py" && -f "$ICI/installer.sh" ]]; then
+    cp "$ICI/$f" "$DONNEES/$f.nouveau"
+  else
+    curl -fsSL "$DEPOT/$f" -o "$DONNEES/$f.nouveau" \
+      || { echo "Téléchargement impossible : vérifiez la connexion à Internet."; exit 1; }
+  fi
+done
+for f in $FICHIERS; do mv "$DONNEES/$f.nouveau" "$DONNEES/$f"; done
 
 # Le dossier du raccourci : celui demandé, sinon celui de la dernière fois, sinon le Bureau.
 [[ -n "$DOSSIER" ]] && DOSSIER="${DOSSIER:A}"

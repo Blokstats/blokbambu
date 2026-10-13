@@ -13,7 +13,6 @@ Fonctionne sur macOS, Windows et Linux, avec la seule bibliothèque standard de 
 """
 import argparse
 import glob
-import html
 import ipaddress
 import json
 import os
@@ -96,8 +95,6 @@ ETATS_IMPRIMANTE = {
     "refusee": "L'imprimante refuse le code d'accès gardé par Bambu Studio : pas d'alerte de bobine.",
     "sans_code": "Bambu Studio n'a pas de code d'accès pour l'imprimante : pas d'alerte de bobine.",
 }
-
-MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."]
 
 # Couleurs de référence pour nommer un code hexadécimal.
 NOMS = [
@@ -307,38 +304,41 @@ class Veilleur:
                 journal = lire_journal(self.donnees) + nouvelles
                 journal.sort(key=lambda e: e["date"])
                 ecrire_json(self.donnees, "impressions.json", journal)
-            ecrire_page(self.donnees, self.port)
         return len(nouvelles)
 
 
 # ---------------------------------------------------------------- page
 
-def nombre(x, decimales=1):
-    return ("%.*f" % (decimales, x)).replace(".", ",")
+ICI = os.path.dirname(os.path.abspath(__file__))
+# La page et ses images sont des fichiers posés à côté de ce programme.
+FICHIERS_PAGE = {"/": ("page.html", "text/html; charset=utf-8"),
+                 "/logo.png": ("logo.png", "image/png"), "/icone.png": ("icone.png", "image/png")}
+POLICES = {"/police/heavy": "PPMonumentExtended-Heavy", "/police/bold": "PPMonumentExtended-Bold"}
 
+MARQUES = ["Bambu Lab", "eSUN", "Polymaker", "Sunlu", "Elegoo", "Creality", "Anycubic", "Overture", "Prusament",
+           "Eryone", "Jayo", "Kingroon", "Geeetech", "R3D", "Rosa3D", "ColorFabb", "Fillamentum", "Arianeplast",
+           "Francofil"]
+# Ce que le nom d'un fil dans Bambu Studio dit de sa marque (« eSUN PLA+ », « PolyTerra PLA »…).
+INDICES_MARQUE = [("bambu", "Bambu Lab"), ("esun", "eSUN"), ("poly", "Polymaker"), ("panchroma", "Polymaker"),
+                  ("sunlu", "Sunlu"), ("elegoo", "Elegoo"), ("creality", "Creality"), ("anycubic", "Anycubic"),
+                  ("overture", "Overture"), ("prusament", "Prusament"), ("eryone", "Eryone"), ("jayo", "Jayo"),
+                  ("kingroon", "Kingroon"), ("geeetech", "Geeetech"), ("colorfabb", "ColorFabb"),
+                  ("fillamentum", "Fillamentum"), ("rosa3d", "Rosa3D"), ("r3d", "R3D")]
+ETATS_COURTS = {"recherche": "recherchée", "connectee": "connectée", "injoignable": "injoignable",
+                "bloquee": "bloquée", "refusee": "refusée", "sans_code": "sans code"}
 
-def poids(g):
-    if g >= 1000:
-        return ("%.2f" % (g / 1000)).rstrip("0").rstrip(".").replace(".", ",") + " kg"
-    texte = nombre(g, 1 if g < 100 else 0)
-    return (texte[:-2] if texte.endswith(",0") else texte) + " g"
-
-
-def longueur(m):
-    return nombre(m, 1 if m < 100 else 0) + " m"
-
-
-def duree(secondes):
-    h, m = secondes // 3600, (secondes % 3600) // 60
-    return "%d h %02d" % (h, m) if h else "%d min" % max(m, 1)
-
-
-def jour(d, annee=True):
-    return "%d %s%s" % (d.day, MOIS[d.month - 1], " %d" % d.year if annee else "")
-
-
-def pastille(code):
-    return '<span class="pastille" style="background:%s"></span>' % html.escape(code)
+# Le raccourci posé dans un dossier (Mac) : il bascule vers la page servie par le compteur.
+RACCOURCI = """<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BlokBambu</title>
+<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#090909;
+color:#e8e4dc;font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;text-align:center}
+b{display:block;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:#ffb400;margin-bottom:10px}
+a{color:#fff}</style></head><body><p><b>BlokBambu</b>
+La page s'ouvre sur <a href="http://127.0.0.1:PORT/">http://127.0.0.1:PORT/</a>.<br>
+Si rien ne se passe, BlokBambu n'est pas lancé sur cet ordinateur.</p>
+<script src="http://127.0.0.1:PORT/saut.js"></script></body></html>
+"""
 
 
 def cle_tri(cle):
@@ -346,77 +346,39 @@ def cle_tri(cle):
     return (nom_couleur(couleur), couleur, type_fil)
 
 
-STYLE = """
-:root { --fond:#f6f5f2; --carte:#fff; --texte:#161616; --discret:#6f6c66; --trait:#e4e1da; --piste:#eeebe5; --alerte:#b3261e; }
-@media (prefers-color-scheme: dark) {
-  :root { --fond:#141413; --carte:#1d1d1b; --texte:#f2f0eb; --discret:#9b978f; --trait:#2e2d2a; --piste:#262523; --alerte:#f2877f; }
-}
-* { box-sizing:border-box; }
-body { margin:0; background:var(--fond); color:var(--texte);
-  font:16px/1.45 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; -webkit-font-smoothing:antialiased; }
-main { max-width:760px; margin:0 auto; padding:48px 16px 64px; }
-h1 { font-size:32px; line-height:1.1; margin:0 0 8px; letter-spacing:-.02em; }
-h2 { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--discret); margin:40px 0 12px; font-weight:600; }
-small { display:block; color:var(--discret); font-size:13px; }
-.resume { color:var(--discret); margin:0; }
-table { width:100%; border-collapse:collapse; background:var(--carte); border:1px solid var(--trait); border-radius:14px; overflow:hidden; }
-th { font-size:12px; font-weight:600; color:var(--discret); text-align:left; padding:12px 16px; border-bottom:1px solid var(--trait); }
-td { padding:14px 16px; border-bottom:1px solid var(--trait); vertical-align:top; }
-tr:last-child td { border-bottom:0; }
-.n { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
-.fort { font-weight:600; }
-.couleur { display:flex; gap:12px; align-items:center; min-width:0; }
-code { font:12px ui-monospace, SFMono-Regular, Menlo, monospace; color:var(--discret); margin-left:4px; }
-.pastille { flex:none; display:inline-block; width:22px; height:22px; border-radius:50%; border:1px solid var(--trait);
-  box-shadow:inset 0 0 0 1px rgba(128,128,128,.25); }
-.barre { height:6px; border-radius:3px; background:var(--piste); margin-top:10px; overflow:hidden; }
-.barre i { display:block; height:100%; border-radius:3px; box-shadow:inset 0 0 0 1px rgba(128,128,128,.35); }
-.jauge { height:8px; border-radius:4px; background:var(--piste); margin-top:12px; overflow:hidden; }
-.jauge i { display:block; height:100%; border-radius:4px; background:var(--texte); }
-.bas .jauge i { background:var(--alerte); }
-.liste { list-style:none; margin:0; padding:0; background:var(--carte); border:1px solid var(--trait); border-radius:14px; }
-.liste > li { padding:14px 16px; border-bottom:1px solid var(--trait); }
-.liste > li:last-child { border-bottom:0; }
-.ligne { display:flex; gap:16px; justify-content:space-between; align-items:center; }
-.reste { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
-.reste strong { font-size:18px; }
-.bas .reste strong, .bas .etat { color:var(--alerte); }
-.etat { display:inline; }
-.sans { color:var(--discret); }
-.fils { display:flex; flex-wrap:wrap; gap:6px 14px; justify-content:flex-end; }
-.fil { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; font-variant-numeric:tabular-nums; }
-.fil .pastille { width:14px; height:14px; }
-.vide { background:var(--carte); border:1px solid var(--trait); border-radius:14px; padding:28px 20px; color:var(--discret); margin:0; }
-details { margin-top:10px; }
-summary { cursor:pointer; color:var(--discret); font-size:14px; width:fit-content; }
-summary:hover { color:var(--texte); }
-form { display:flex; flex-wrap:wrap; gap:10px 14px; align-items:center; margin:12px 0 0; }
-label { display:inline-flex; align-items:center; gap:8px; font-size:14px; max-width:100%; }
-label select { min-width:0; flex:1 1 auto; }
-input, select, button { font:inherit; font-size:15px; color:var(--texte); background:var(--fond); border:1px solid var(--trait);
-  border-radius:9px; padding:7px 10px; min-height:38px; }
-input[type=number] { width:92px; text-align:right; }
-input[type=color] { width:46px; padding:3px; }
-select { max-width:100%; }
-button { cursor:pointer; background:var(--texte); color:var(--fond); border-color:var(--texte); font-weight:600; padding:7px 14px; }
-button.discret { background:none; color:var(--discret); border-color:var(--trait); font-weight:400; }
-.ajout { margin:12px 0 0; padding:14px 16px; background:var(--carte); border:1px solid var(--trait); border-radius:14px; }
-.ajout .autre { display:none; gap:10px; align-items:center; }
-.imprimante { margin:12px 2px 0; }
-.ajout:has(select[name=connue] option[value=""]:checked) .autre, .ajout.libre .autre { display:inline-flex; }
-a { color:inherit; }
-footer { color:var(--discret); font-size:13px; margin-top:28px; }
-@media (max-width:560px) {
-  th:nth-child(3), td:nth-child(3) { display:none; }
-  .impressions .ligne { flex-direction:column; align-items:flex-start; gap:10px; }
-  .fils { justify-content:flex-start; }
-}
-"""
+def marque_devinee(noms):
+    for nom in noms:
+        for indice, marque in INDICES_MARQUE:
+            if nom.lower().startswith(indice):
+                return marque
+    return ""
 
 
-def rendre(donnees, port, vivant, imprimante=None):
-    """La page. `vivant` : servie par le compteur, avec les boutons ; sinon simple copie à lire."""
-    e = html.escape
+def marques_proposees(donnees):
+    """Les marques de base, puis celles ajoutées à la main."""
+    ajoutees = [m for m in lire(donnees, "marques.json", []) if isinstance(m, str)]
+    return MARQUES + [m for m in ajoutees if m not in MARQUES]
+
+
+def police_installee(nom):
+    """Le fichier d'une police installée sur cet ordinateur, ou None. Elle n'est jamais livrée avec BlokBambu."""
+    if MAC:
+        dossiers = ["~/Library/Fonts", "/Library/Fonts"]
+    elif WINDOWS:
+        dossiers = [os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "Windows", "Fonts"),
+                    os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts")]
+    else:
+        dossiers = ["~/.fonts", "~/.local/share/fonts", "/usr/share/fonts", "/usr/local/share/fonts"]
+    for dossier in dossiers:
+        for extension in (".otf", ".ttf"):
+            chemin = os.path.join(os.path.expanduser(dossier), nom + extension)
+            if os.path.isfile(chemin):
+                return chemin
+    return None
+
+
+def etat_page(donnees, imprimante=None):
+    """Tout ce que la page affiche, calculé à la demande."""
     journal, bobines = lire_journal(donnees), lire_bobines(donnees)
     connues = lire(donnees, "couleurs.json", {})
 
@@ -424,7 +386,7 @@ def rendre(donnees, port, vivant, imprimante=None):
     for entree in journal:
         for f in entree["fils"]:
             cle = "%s|%s" % (f["couleur"], f["type"])
-            t = totaux.setdefault(cle, {"couleur": f["couleur"], "type": f["type"], "noms": [], "g": 0.0, "m": 0.0, "n": 0})
+            t = totaux.setdefault(cle, {"noms": [], "g": 0.0, "m": 0.0, "n": 0})
             t["g"] += f["g"]
             t["m"] += f["m"]
             t["n"] += 1
@@ -436,152 +398,62 @@ def rendre(donnees, port, vivant, imprimante=None):
         if emplacement.get("present") and emplacement.get("couleur") and emplacement.get("type"):
             charges.setdefault("%s|%s" % (emplacement["couleur"], emplacement["type"]), []).append(nom_emplacement(c))
 
-    def detail(cle, type_fil, liste=False):
-        noms = connues.get(cle, []) if liste else (totaux[cle]["noms"] if cle in totaux else [])
-        place = ["emplacement " + ", ".join(charges[cle])] if cle in charges else []
-        return " · ".join(([type_fil] if type_fil else []) + noms + place)
+    def fiche(cle):
+        couleur, _, type_fil = cle.partition("|")
+        return {"cle": cle, "couleur": couleur, "nom": nom_couleur(couleur), "type": type_fil,
+                "emplacements": charges.get(cle, [])}
 
-    def champs_caches(couleur, type_fil):
-        return '<input type="hidden" name="couleur" value="%s"><input type="hidden" name="type" value="%s">' % (
-            e(couleur), e(type_fil))
-
-    def champ_poids(valeur):
-        return ('<label>Fil sur la bobine <input type="number" name="poids" value="%d" min="1" max="20000" '
-                'step="1" required> g</label>' % valeur)
-
-    corps = []
-
-    # --- bobines
-    corps.append("<h2>Bobines</h2>")
-    lignes = []
+    suivies, reste_total = [], 0.0
     for cle in sorted(bobines, key=cle_tri):
         b = bobines[cle]
         utilise = sum(f["g"] for en in journal if en["date"] >= b["depuis"]
                       for f in en["fils"] if "%s|%s" % (f["couleur"], f["type"]) == cle)
         reste = b["poids"] - utilise
-        part = max(min(reste / max(b["poids"], BOBINE_NEUVE), 1), 0)
-        bas = reste < PRESQUE_VIDE
-        etat = ' · <span class="etat">%s</span>' % ("vide" if reste <= 0 else "bientôt vide") if bas else ""
-        actions = ""
-        if vivant:
-            actions = ('<details><summary>Nouvelle bobine</summary>'
-                       '<form method="post" action="/bobine">%s%s<button>Valider</button></form>'
-                       '<form method="post" action="/retirer">%s<button class="discret">Ne plus suivre cette bobine</button></form>'
-                       '</details>') % (champs_caches(b["couleur"], b["type"]), champ_poids(BOBINE_NEUVE),
-                                        champs_caches(b["couleur"], b["type"]))
-        lignes.append(
-            '<li class="%s"><div class="ligne"><div class="couleur">%s<div><strong>%s</strong> <code>%s</code>'
-            '<small>%s · posée le %s%s</small></div></div>'
-            '<div class="reste"><strong>%s</strong><small>restants</small></div></div>'
-            '<div class="jauge"><i style="width:%.1f%%"></i></div>%s</li>' % (
-                "bas" if bas else "", pastille(b["couleur"]), e(nom_couleur(b["couleur"])), e(b["couleur"]),
-                e(detail(cle, b["type"])), jour(datetime.fromisoformat(b["depuis"]), False), etat,
-                poids(max(reste, 0)), 100 * part, actions))
-    # fils chargés sur l'imprimante ou déjà imprimés, sans bobine suivie
-    a_suivre = sorted((c for c in set(totaux) | set(charges) if c not in bobines), key=cle_tri)
-    for cle in a_suivre:
-        t = {"couleur": cle.partition("|")[0], "type": cle.partition("|")[2]}
-        actions = ""
-        if vivant:
-            actions = ('<details><summary>Suivre cette bobine</summary><form method="post" action="/bobine">%s%s'
-                       '<button>Valider</button></form></details>') % (
-                           champs_caches(t["couleur"], t["type"]), champ_poids(BOBINE_NEUVE))
-        lignes.append(
-            '<li><div class="ligne"><div class="couleur">%s<div><strong>%s</strong> <code>%s</code>'
-            '<small>%s</small></div></div><div class="reste sans">pas de bobine suivie</div></div>%s</li>' % (
-                pastille(t["couleur"]), e(nom_couleur(t["couleur"])), e(t["couleur"]), e(detail(cle, t["type"])), actions))
-    if lignes:
-        corps.append('<ul class="liste">%s</ul>' % "".join(lignes))
-    else:
-        corps.append('<p class="vide">Aucune bobine suivie. Ajoutez celles qui sont sur l\'imprimante : '
-                     "chaque impression s'en déduira.</p>")
+        reste_total += max(reste, 0)
+        f = fiche(cle)
+        # La jauge se lit par rapport à une bobine pleine, pas par rapport au poids saisi.
+        f.update(marque=b.get("marque", ""), poids=b["poids"], depuis=b["depuis"], reste=round(reste, 2),
+                 part=round(max(min(reste / max(b["poids"], BOBINE_NEUVE), 1), 0), 4), bas=reste < PRESQUE_VIDE)
+        suivies.append(f)
 
-    if vivant:
-        proposees = sorted((c for c in connues if c not in bobines and c not in a_suivre), key=cle_tri)
-        options = "".join('<option value="%s">%s %s%s</option>' % (
-            e(c), e(nom_couleur(c.partition("|")[0])), e(c.partition("|")[0]),
-            e(" · " + detail(c, c.partition("|")[2], True))) for c in proposees)
-        liste = ('<label>Couleur <select name="connue">%s<option value="">Autre couleur…</option></select></label>'
-                 % options) if proposees else ""
-        types = "".join("<option>%s</option>" % t for t in TYPES)
-        corps.append(
-            '<form method="post" action="/bobine" class="ajout%s">%s'
-            '<span class="autre"><input type="color" name="couleur" value="#161616" aria-label="Couleur du fil">'
-            '<select name="type" aria-label="Type de fil">%s</select></span>%s<button>Ajouter la bobine</button></form>' % (
-                "" if proposees else " libre", liste, types, champ_poids(BOBINE_NEUVE)))
-        if imprimante in ETATS_IMPRIMANTE:
-            corps.append('<p class="imprimante"><small>%s</small></p>' % e(ETATS_IMPRIMANTE[imprimante]))
-    else:
-        corps.append('<p><small>Pour ajouter une bobine ou en remettre une à neuf : '
-                     '<a href="http://127.0.0.1:%d/">ouvrir la page du compteur</a>.</small></p>' % port)
+    # Fils chargés sur l'imprimante ou déjà imprimés, sans bobine suivie.
+    a_suivre = []
+    for cle in sorted((c for c in set(totaux) | set(charges) if c not in bobines), key=cle_tri):
+        f = fiche(cle)
+        f["marque"] = marque_devinee(totaux[cle]["noms"] if cle in totaux else connues.get(cle, []))
+        a_suivre.append(f)
 
-    # --- fil utilisé
-    corps.append("<h2>Fil utilisé</h2>")
-    lignes = sorted(totaux.values(), key=lambda t: -t["g"])
-    if lignes:
-        maxi = max(t["g"] for t in lignes)
-        corps.append('<table><thead><tr><th>Couleur</th><th class="n">Poids</th>'
-                     '<th class="n">Longueur</th><th class="n">Impressions</th></tr></thead><tbody>')
-        for t in lignes:
-            corps.append(
-                '<tr><td><div class="couleur">%s<div><strong>%s</strong> <code>%s</code>'
-                '<small>%s</small></div></div><div class="barre"><i style="width:%.1f%%;background:%s"></i></div></td>'
-                '<td class="n fort">%s</td><td class="n">%s</td><td class="n">%d</td></tr>' % (
-                    pastille(t["couleur"]), e(nom_couleur(t["couleur"])), e(t["couleur"]),
-                    e(detail("%s|%s" % (t["couleur"], t["type"]), t["type"])),
-                    max(100 * t["g"] / maxi, 0.6), e(t["couleur"]), poids(t["g"]), longueur(t["m"]), t["n"]))
-        corps.append("</tbody></table>")
-        corps.append('<h2>Impressions</h2><ul class="liste impressions">')
-        for entree in reversed(journal):
-            d = datetime.fromisoformat(entree["date"])
-            pl = entree.get("plateaux") or []
-            plateau = ("plateau %d" % pl[0]) if len(pl) == 1 else ("plateaux %s" % ", ".join(map(str, pl)))
-            fils = "".join('<span class="fil">%s%s</span>' % (pastille(f["couleur"]), poids(f["g"]))
-                           for f in entree["fils"])
-            corps.append('<li><div class="ligne"><div><strong>%s</strong><small>%s à %02d h %02d · %s · %s</small></div>'
-                         '<div class="fils">%s</div></div></li>' % (
-                             e(entree["projet"]), jour(d), d.hour, d.minute, plateau, duree(entree["secondes"]), fils))
-        corps.append("</ul>")
-    else:
-        corps.append('<p class="vide">Lancez une impression depuis Bambu Studio sur cet ordinateur : elle apparaîtra ici, '
-                     "avec le fil utilisé par couleur.</p>")
-
-    if journal:
-        n = len(journal)
-        resume = "%d impression%s lancée%s depuis le %s · %s de fil" % (
-            n, "s" if n > 1 else "", "s" if n > 1 else "", jour(datetime.fromisoformat(journal[0]["date"])),
-            poids(sum(t["g"] for t in lignes)))
-    else:
-        resume = "Aucune impression comptée pour l'instant."
-
-    maintenant = datetime.now()
-    # La copie posée dans le dossier BAMBU passe d'elle-même à la page du compteur, qui a les boutons.
-    # Ce script vient du compteur : s'il est arrêté, rien ne se charge et la copie reste affichée.
-    saut = "" if vivant else '<script src="http://127.0.0.1:%d/saut.js"></script>\n' % port
-    return "".join([
-        '<!doctype html>\n<html lang="fr"><head><meta charset="utf-8">\n',
-        '<meta name="viewport" content="width=device-width, initial-scale=1">\n',
-        '<meta name="color-scheme" content="light dark">\n<title>BlokBambu</title>\n',
-        "<style>", STYLE, "</style></head><body><main>\n",
-        "<h1>BlokBambu</h1>\n", '<p class="resume">%s</p>\n' % e(resume), "\n".join(corps),
-        "\n<footer>Poids estimés par Bambu Studio au lancement de chaque impression, purge comprise. ",
-        "Mis à jour le %s à %02d h %02d.</footer>\n" % (jour(maintenant), maintenant.hour, maintenant.minute),
-        "</main>", saut, "</body></html>\n"])
+    autres = sorted((c for c in connues if c not in bobines and c not in totaux and c not in charges), key=cle_tri)
+    etat = imprimante if imprimante in ETATS_IMPRIMANTE else None
+    return {
+        "imprimante": {"etat": etat or "absente", "court": ETATS_COURTS.get(etat, "non suivie"),
+                       "texte": ETATS_IMPRIMANTE.get(etat, "L'imprimante n'est pas suivie."),
+                       "alerte": etat in ("bloquee", "refusee")},
+        "resume": {"impressions": len(journal), "depuis": journal[0]["date"] if journal else None,
+                   "g": round(sum(t["g"] for t in totaux.values()), 2), "reste": round(reste_total, 2)},
+        "bobines": suivies,
+        "a_suivre": a_suivre,
+        "couleurs": [fiche(c) for c in [f["cle"] for f in a_suivre] + autres],
+        "totaux": [dict(fiche(cle), fils=t["noms"], g=round(t["g"], 2), m=round(t["m"], 2), n=t["n"])
+                   for cle, t in sorted(totaux.items(), key=lambda x: -x[1]["g"])],
+        "impressions": [{"date": en["date"], "projet": en["projet"], "plateaux": en.get("plateaux") or [],
+                         "secondes": en.get("secondes") or 0,
+                         "fils": [{"couleur": f["couleur"], "g": f["g"]} for f in en["fils"]]}
+                        for en in reversed(journal[-300:])],
+        "marques": marques_proposees(donnees),
+        "types": TYPES,
+    }
 
 
 def ecrire_page(donnees, port):
-    ecrire(os.path.join(donnees, PAGE), rendre(donnees, port, vivant=False))
+    ecrire(os.path.join(donnees, PAGE), RACCOURCI.replace("PORT", str(port)))
 
 
 # ---------------------------------------------------------------- serveur de la page
 
 def bobine_demandee(champs):
-    """(couleur, type) d'un formulaire, ou None si la saisie n'est pas valable."""
-    if champs.get("connue"):
-        couleur, _, type_fil = champs["connue"].partition("|")
-    else:
-        couleur, type_fil = champs.get("couleur", ""), champs.get("type", "")
-    couleur = couleur.strip().upper()
+    """(couleur, type) d'un envoi de la page, ou None si la saisie n'est pas valable."""
+    couleur, type_fil = champs.get("couleur", "").strip().upper(), champs.get("type", "")
     if not re.fullmatch(r"#[0-9A-F]{6}", couleur) or not re.fullmatch(r"[A-Za-z0-9+\- ]{1,16}", type_fil):
         return None
     return couleur, type_fil
@@ -606,59 +478,79 @@ def lancer_serveur(donnees, port, imprimante=None):
             pass
 
         def autorise(self):
-            # Seul un navigateur sur ce Mac, depuis la page elle-même, peut modifier les bobines.
+            # Seul un navigateur sur cet ordinateur, depuis la page elle-même, peut modifier les bobines.
             if self.headers.get("Host") not in adresses:
                 return False
             if self.command == "POST":
                 return self.headers.get("Origin") in ["http://" + a for a in adresses]
             return True
 
-        def repondre(self, code, corps, type_mime="text/html; charset=utf-8", entetes=()):
+        def repondre(self, code, corps, type_mime="text/plain; charset=utf-8", cache="no-store"):
             self.send_response(code)
             self.send_header("Content-Type", type_mime)
             self.send_header("Content-Length", str(len(corps)))
-            self.send_header("Cache-Control", "no-store")
-            for nom, valeur in entetes:
-                self.send_header(nom, valeur)
+            self.send_header("Cache-Control", cache)
             self.end_headers()
             self.wfile.write(corps)
+
+        def json(self, code, valeur):
+            self.repondre(code, json.dumps(valeur, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
+
+        def fichier(self, chemin, type_mime, cache="no-store"):
+            try:
+                with open(chemin, "rb") as f:
+                    self.repondre(200, f.read(), type_mime, cache)
+            except OSError:
+                self.repondre(500, "Il manque un fichier de BlokBambu : relancez l'installation.".encode("utf-8"))
 
         def do_GET(self):
             chemin = self.path.split("?")[0]
             if not self.autorise():
-                self.repondre(403, b"refuse", "text/plain")
+                self.repondre(403, b"refuse")
+            elif chemin == "/api/etat":
+                self.json(200, etat_page(donnees, imprimante.etat if imprimante else None))
             elif chemin == "/saut.js":
                 self.repondre(200, b'location.replace("http://127.0.0.1:%d/");' % port, "text/javascript")
-            elif chemin == "/":
-                etat = imprimante.etat if imprimante else None
-                self.repondre(200, rendre(donnees, port, vivant=True, imprimante=etat).encode("utf-8"))
+            elif chemin in FICHIERS_PAGE:
+                nom, type_mime = FICHIERS_PAGE[chemin]
+                self.fichier(os.path.join(ICI, nom), type_mime)
+            elif chemin in POLICES:
+                police = police_installee(POLICES[chemin])
+                if police:
+                    self.fichier(police, "font/otf" if police.endswith(".otf") else "font/ttf", "max-age=86400")
+                else:
+                    self.repondre(404, b"police absente")
             else:
-                self.repondre(404, b"introuvable", "text/plain")
+                self.repondre(404, b"introuvable")
 
         def do_POST(self):
             taille = int(self.headers.get("Content-Length") or 0)
             if not self.autorise() or taille > 4096:
-                return self.repondre(403, b"refuse", "text/plain")
+                return self.repondre(403, b"refuse")
             champs = {k: v[0] for k, v in parse_qs(self.rfile.read(taille).decode("utf-8", "replace")).items()}
             bobine = bobine_demandee(champs)
-            if bobine and self.path in ("/bobine", "/retirer"):
-                cle = "%s|%s" % bobine
-                with verrou:
-                    bobines = lire_bobines(donnees)
-                    if self.path == "/retirer":
-                        bobines.pop(cle, None)
-                    else:
-                        try:
-                            grammes = float(champs.get("poids", "").replace(",", "."))
-                        except ValueError:
-                            grammes = 0
-                        if 0 < grammes <= 20000:
-                            # Une bobine neuve repart de son poids : seules les impressions suivantes s'en déduisent.
-                            bobines[cle] = {"couleur": bobine[0], "type": bobine[1], "poids": grammes,
-                                            "depuis": datetime.now().isoformat(timespec="seconds")}
-                    ecrire_json(donnees, "bobines.json", bobines)
-                ecrire_page(donnees, port)
-            self.repondre(303, b"", "text/plain", [("Location", "/")])
+            if not bobine or self.path not in ("/bobine", "/retirer"):
+                return self.json(400, {"ok": False})
+            cle = "%s|%s" % bobine
+            with verrou:
+                bobines = lire_bobines(donnees)
+                if self.path == "/retirer":
+                    bobines.pop(cle, None)
+                else:
+                    try:
+                        grammes = float(champs.get("poids", "").replace(",", "."))
+                    except ValueError:
+                        grammes = 0
+                    if not 0 < grammes <= 20000:
+                        return self.json(400, {"ok": False})
+                    marque = " ".join(champs.get("marque", "").split())[:40]
+                    # Une bobine neuve repart de son poids : seules les impressions suivantes s'en déduisent.
+                    bobines[cle] = {"couleur": bobine[0], "type": bobine[1], "marque": marque, "poids": grammes,
+                                    "depuis": datetime.now().isoformat(timespec="seconds")}
+                    if marque and marque not in marques_proposees(donnees):  # une marque nouvelle est retenue
+                        ecrire_json(donnees, "marques.json", lire(donnees, "marques.json", []) + [marque])
+                ecrire_json(donnees, "bobines.json", bobines)
+            self.json(200, {"ok": True})
 
     serveur = Serveur(("127.0.0.1", port), Page)
     threading.Thread(target=serveur.serve_forever, daemon=True).start()

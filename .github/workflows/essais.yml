@@ -30,7 +30,7 @@ jobs:
         shell: powershell
         run: |
           $env:BLOKBAMBU_DISCRET = "1"
-          $env:BLOKBAMBU_SOURCE = "$PWD\compteur.py"
+          $env:BLOKBAMBU_SOURCE = "$PWD"
           Invoke-Expression (Get-Content -Raw -Encoding UTF8 installer.ps1)
           python tests/essais.py --installe
           if ($LASTEXITCODE -ne 0) { exit 1 }

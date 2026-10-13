@@ -3,7 +3,7 @@
 Un compteur de fil pour les imprimantes Bambu Lab, sur Mac, Windows et Linux.
 
 - **Fil par couleur** : chaque impression lancée depuis Bambu Studio est notée, avec les grammes et les mètres de chaque fil.
-- **Bobines** : la page montre ce qu'il reste sur chaque bobine. Un bouton « Nouvelle bobine » la remet à neuf.
+- **Bobines** : la page montre ce qu'il reste sur chaque bobine, avec sa marque. Un bouton « Nouvelle bobine » la remet à neuf.
 - **Alerte** : une fenêtre vous prévient quand une bobine est chargée, changée ou retirée de l'imprimante, pour penser à mettre la page à jour.
 
 Tout tourne sur votre ordinateur. Rien n'est envoyé sur Internet, et BlokBambu n'envoie aucune commande à l'imprimante.
@@ -55,8 +55,8 @@ BlokBambu apparaît dans le menu des applications.
 ## S'en servir
 
 1. Ouvrez la page : le raccourci, ou <http://127.0.0.1:47815/>.
-2. Les bobines chargées sur l'imprimante y sont déjà. Pour chacune, cliquez **Suivre cette bobine** et indiquez le poids de fil qu'il reste dessus.
-3. Imprimez comme d'habitude depuis Bambu Studio : chaque impression apparaît dans la page et se déduit de la bobine de la même couleur.
+2. Les bobines chargées sur l'imprimante y sont déjà. Pour chacune, cliquez **Suivre cette bobine**, choisissez sa marque (ou ajoutez la vôtre) et indiquez le poids de fil qu'il reste dessus.
+3. Imprimez comme d'habitude depuis Bambu Studio : chaque impression apparaît dans la page, sans la recharger, et se déduit de la bobine de la même couleur.
 4. Quand vous posez une bobine neuve, une fenêtre vous le rappelle : cliquez **Nouvelle bobine** sur la page.
 
 Une bobine passe en rouge quand il lui reste moins de 100 g.
@@ -94,7 +94,7 @@ Vos données sont gardées. Pour tout effacer, supprimez le dossier `BlokBambu` 
 
 ## Comment ça marche
 
-BlokBambu est un petit programme en Python (`compteur.py`, sans dépendance) qui reste lancé en fond.
+BlokBambu est un petit programme en Python (`compteur.py`, sans dépendance) qui reste lancé en fond et sert la page (`page.html`).
 
 - **Les impressions.** Quand vous cliquez sur « Imprimer », Bambu Studio écrit sur l'ordinateur le fichier qu'il envoie à l'imprimante. BlokBambu le repère et y lit le poids de chaque fil.
 - **Les bobines.** BlokBambu écoute ce que l'imprimante annonce sur le réseau local, comme le fait Bambu Studio. Pour s'y connecter, il lit le code d'accès que Bambu Studio garde déjà sur l'ordinateur, et vérifie que c'est bien votre imprimante avant de le présenter. Il écoute seulement : il ne peut ni lancer ni arrêter une impression.

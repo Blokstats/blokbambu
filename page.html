@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>BlokBambu</title>
+<link rel="icon" href="/icone.png">
+<style>
+/* La charte du dashboard BlokCorp : fond #090909 quadrillé, panneaux #111, jaune et rose,
+   PP Monument Extended pour les titres et les chiffres. La police n'est pas livrée avec
+   BlokBambu : elle est prise sur l'ordinateur quand elle y est installée. */
+@font-face { font-family:'PPMonument'; font-weight:900;
+  src:local('PP Monument Extended Heavy'), local('PPMonumentExtended-Heavy'), url('/police/heavy'); }
+@font-face { font-family:'PPMonument'; font-weight:700;
+  src:local('PP Monument Extended Bold'), local('PPMonumentExtended-Bold'), url('/police/bold'); }
+
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+:root{
+  --bg:#090909; --panel:#111111; --panel2:#161616;
+  --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.13);
+  --text:#e8e4dc; --muted:#555; --muted2:#888;
+  --yellow:#ffb400; --yellow-dim:rgba(255,180,0,0.08); --yellow-border:rgba(255,180,0,0.22);
+  --pink:#EF00CA; --r:10px;
+  --titre:'PPMonument','Arial Black',Impact,sans-serif;
+}
+html,body{ min-height:100%; background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif; }
+body::before{ content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background-image:linear-gradient(rgba(255,255,255,0.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,0.03) 1px,transparent 1px);
+  background-size:40px 40px; }
+button, input, select { font-family:inherit; }
+
+/* En-tête */
+header{ height:56px; background:var(--panel); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; padding:0 28px; gap:12px; position:sticky; top:0; z-index:10; }
+.h-logo-img{ height:38px; width:auto; display:block; pointer-events:none; }
+.h-sep{ width:1px; height:18px; background:var(--border2); margin:0 4px; }
+.h-sub{ font-family:var(--titre); font-weight:700; font-size:11px; color:var(--muted2);
+  letter-spacing:.05em; text-transform:uppercase; }
+.h-etat{ margin-left:auto; display:flex; align-items:center; gap:7px; background:var(--panel);
+  border:1px solid var(--border); border-radius:7px; color:var(--muted2);
+  font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:8px 12px; white-space:nowrap; }
+.h-etat .dot{ width:7px; height:7px; border-radius:50%; background:var(--muted); flex-shrink:0; }
+.h-etat.on{ color:var(--pink); border-color:rgba(239,0,202,.35); background:rgba(239,0,202,.07); }
+.h-etat.on .dot{ background:var(--pink); animation:pulse 1.6s ease-in-out infinite; }
+@keyframes pulse{
+  0%,100% { opacity:1;   box-shadow:0 0 0 0 rgba(239,0,202,.55); }
+  50%     { opacity:.55; box-shadow:0 0 0 5px rgba(239,0,202,0); }
+}
+@keyframes bump{ 0%{ transform:scale(1) } 35%{ transform:scale(1.07) } 100%{ transform:scale(1) } }
+.bumped{ animation:bump .5s ease; }
+
+main{ position:relative; z-index:1; max-width:1100px; margin:0 auto; padding:32px 28px 80px; }
+
+/* Titres de section */
+.section-head{ display:flex; align-items:center; gap:10px; margin:34px 0 16px; }
+.section-title{ font-family:var(--titre); font-weight:900; font-size:11px;
+  letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+.section-line{ flex:1; height:1px; background:var(--border); }
+
+/* Les trois chiffres du haut */
+.total-row{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+.total-card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--r); padding:20px 22px; min-width:0; }
+.total-label{ font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+.total-value{ font-family:var(--titre); font-weight:900; font-size:30px; color:#fff; line-height:1.1; margin-top:8px;
+  white-space:nowrap; }
+.total-value.jaune{ color:var(--yellow); }
+.total-value.rose{ color:var(--pink); }
+.total-sous{ font-size:11px; color:var(--muted); margin-top:6px; }
+
+/* Boutons */
+.btn{ background:none; border:1px solid var(--border); border-radius:7px; color:var(--muted2); cursor:pointer;
+  font-size:12px; font-weight:600; padding:8px 13px; letter-spacing:.02em; transition:color .15s, border-color .15s, background .15s; }
+.btn:hover{ color:#fff; border-color:var(--border2); }
+.btn.jaune{ background:var(--yellow); border-color:var(--yellow); color:#000; font-weight:700; }
+.btn.jaune:hover{ background:#ffc233; color:#000; }
+.btn.danger:hover{ color:#e55; border-color:#e55; }
+
+/* Bobines */
+.bobines{ display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:14px; }
+.bobine{ background:var(--panel); border:1px solid var(--border); border-radius:var(--r);
+  padding:18px 20px 16px; position:relative; overflow:hidden; display:flex; flex-direction:column; gap:14px; min-width:0; }
+.bobine::before{ content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--c); }
+.bobine.libre{ border-style:dashed; background:rgba(17,17,17,.45); }
+.b-haut{ display:flex; align-items:center; gap:9px; min-width:0; }
+.pastille{ width:11px; height:11px; border-radius:50%; background:var(--c); flex-shrink:0;
+  box-shadow:0 0 0 1px rgba(255,255,255,.28); }
+.b-nom{ font-family:var(--titre); font-weight:900; font-size:12px; color:#fff; letter-spacing:.02em;
+  text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.b-place{ margin-left:auto; font-family:var(--titre); font-weight:700; font-size:10px; color:var(--yellow);
+  background:var(--yellow-dim); border:1px solid var(--yellow-border); padding:2px 7px; border-radius:4px; letter-spacing:.04em; }
+.b-detail{ font-size:11px; color:var(--muted2); margin-top:-8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.b-reste .n{ font-family:var(--titre); font-weight:900; font-size:24px; color:#fff; line-height:1; }
+.b-reste .l{ font-size:9px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-top:6px; }
+.bobine.bas .b-reste .n, .bobine.bas .b-reste .l{ color:var(--pink); }
+.jauge{ height:5px; border-radius:3px; background:rgba(255,255,255,.06); overflow:hidden; }
+.jauge i{ display:block; height:100%; border-radius:3px; background:var(--yellow); transition:width .4s ease; }
+.bobine.bas .jauge i{ background:var(--pink); }
+.b-actions{ display:flex; gap:8px; margin-top:auto; }
+.b-actions .btn{ flex:1; }
+
+/* Listes */
+.table{ background:var(--panel); border:1px solid var(--border); border-radius:var(--r); overflow:hidden; }
+.ligne{ display:flex; align-items:center; gap:14px; padding:12px 18px; border-bottom:1px solid var(--border); min-width:0; }
+.ligne:last-child{ border-bottom:none; }
+.l-nom{ min-width:0; }
+.l-nom b{ font-size:13px; font-weight:600; color:#fff; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.l-nom span{ font-size:11px; color:var(--muted2); display:block; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.l-barre{ flex:1; height:5px; border-radius:3px; background:rgba(255,255,255,.06); overflow:hidden; min-width:40px; }
+.l-barre i{ display:block; height:100%; border-radius:3px; background:var(--c); box-shadow:inset 0 0 0 1px rgba(255,255,255,.22); }
+.l-chiffre{ font-family:var(--titre); font-weight:900; font-size:13px; color:#fff; min-width:86px; text-align:right; white-space:nowrap; }
+.l-note{ font-size:11px; color:var(--muted2); min-width:118px; text-align:right; white-space:nowrap; }
+.couleur-nom{ width:190px; flex-shrink:0; }
+.fils{ margin-left:auto; display:flex; flex-wrap:wrap; gap:6px 14px; justify-content:flex-end; }
+.fil{ display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text); white-space:nowrap; font-variant-numeric:tabular-nums; }
+.fil .pastille{ width:9px; height:9px; }
+.vide{ text-align:center; color:var(--muted2); font-size:12px; line-height:1.6; padding:34px 20px;
+  background:var(--panel); border:1px solid var(--border); border-radius:var(--r); }
+.alerte{ font-size:12px; line-height:1.5; color:var(--text); background:rgba(239,0,202,.07);
+  border:1px solid rgba(239,0,202,.3); border-radius:var(--r); padding:12px 16px; margin-bottom:18px; }
+footer{ color:var(--muted); font-size:11px; margin-top:30px; line-height:1.6; }
+
+/* Fiche d'une bobine */
+dialog{ background:var(--panel); color:var(--text); border:1px solid var(--border2); border-radius:14px; padding:0;
+  width:min(500px, calc(100vw - 28px)); margin:auto; box-shadow:0 24px 80px rgba(0,0,0,.7); }
+dialog::backdrop{ background:rgba(0,0,0,.7); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
+.f-tete{ display:flex; align-items:center; gap:10px; padding:18px 22px; border-bottom:1px solid var(--border); }
+.f-titre{ font-family:var(--titre); font-weight:900; font-size:13px; color:#fff; letter-spacing:.04em; text-transform:uppercase; }
+.f-fermer{ margin-left:auto; background:none; border:1px solid var(--border); border-radius:5px; color:var(--muted2);
+  cursor:pointer; font-size:15px; line-height:1; padding:4px 8px; }
+.f-fermer:hover{ color:#fff; border-color:var(--border2); }
+.f-corps{ padding:20px 22px 4px; display:flex; flex-direction:column; gap:20px; }
+.champ > label, .champ > .etiquette{ display:block; font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--muted2); margin-bottom:9px; }
+.choix{ display:flex; flex-wrap:wrap; gap:7px; }
+.puce{ background:var(--panel2); border:1px solid var(--border); border-radius:7px; color:var(--muted2); cursor:pointer;
+  font-size:12px; font-weight:600; padding:7px 11px; transition:color .15s, border-color .15s, background .15s; }
+.puce:hover{ color:#fff; border-color:var(--border2); }
+.puce.active{ background:var(--yellow); border-color:var(--yellow); color:#000; font-weight:700; }
+.puce.plus{ border-style:dashed; }
+.teinte{ width:34px; height:34px; border-radius:50%; background:var(--c); cursor:pointer; padding:0;
+  border:2px solid var(--panel); box-shadow:0 0 0 1px rgba(255,255,255,.25); transition:box-shadow .15s; }
+.teinte:hover{ box-shadow:0 0 0 2px rgba(255,255,255,.5); }
+.teinte.active{ box-shadow:0 0 0 2px var(--yellow); }
+.teinte-libre{ position:relative; width:34px; height:34px; border-radius:50%; overflow:hidden; cursor:pointer;
+  border:1px dashed var(--border2); display:flex; align-items:center; justify-content:center; color:var(--muted2); font-size:17px; }
+.teinte-libre input{ position:absolute; inset:-6px; width:50px; height:50px; opacity:0; cursor:pointer; }
+.fixe{ display:flex; align-items:center; gap:10px; font-size:13px; color:#fff; font-weight:600; }
+.fixe small{ color:var(--muted2); font-weight:400; font-size:12px; }
+.saisie{ background:var(--panel2); border:1px solid var(--border); border-radius:7px; color:#fff; font-size:15px;
+  padding:9px 12px; outline:none; transition:border-color .15s; }
+.saisie:focus{ border-color:var(--yellow-border); }
+.poids{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.poids .saisie{ width:104px; text-align:right; font-variant-numeric:tabular-nums; }
+.poids .unite{ color:var(--muted2); font-size:13px; }
+.f-pied{ display:flex; align-items:center; gap:10px; padding:18px 22px 20px; }
+.f-pied .espace{ flex:1; }
+.f-erreur{ color:var(--pink); font-size:12px; padding:0 22px; min-height:16px; }
+[hidden]{ display:none !important; }
+
+@media (max-width:760px){
+  header{ padding:0 14px; gap:8px; }
+  main{ padding:24px 14px 60px; }
+  .total-row{ grid-template-columns:1fr; }
+  .h-etat .texte-long{ display:none; }
+  .couleur-nom{ width:auto; flex:1; }
+  .l-barre, .l-note{ display:none; }
+  .ligne.impression{ flex-direction:column; align-items:flex-start; gap:8px; }
+  .fils{ margin-left:0; justify-content:flex-start; }
+  input, select, button{ font-size:16px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <img class="h-logo-img" src="/logo.png" alt="BlokCorp">
+  <div class="h-sep"></div>
+  <span class="h-sub">BlokBambu</span>
+  <span class="h-etat" id="imprimante" title=""><span class="dot"></span><span id="imprimanteTexte">Imprimante</span></span>
+</header>
+
+<main>
+  <div class="alerte" id="alerte" hidden></div>
+
+  <div class="total-row">
+    <div class="total-card"><div class="total-label">Fil imprimé</div><div class="total-value jaune" id="kFil">—</div><div class="total-sous" id="kDepuis">&nbsp;</div></div>
+    <div class="total-card"><div class="total-label">Impressions</div><div class="total-value" id="kImpressions">—</div><div class="total-sous">lancées depuis Bambu Studio</div></div>
+    <div class="total-card"><div class="total-label">Reste sur les bobines</div><div class="total-value rose" id="kReste">—</div><div class="total-sous" id="kBobines">&nbsp;</div></div>
+  </div>
+
+  <div class="section-head">
+    <span class="section-title">Bobines</span><span class="section-line"></span>
+    <button class="btn jaune" id="ajouter">+ Ajouter une bobine</button>
+  </div>
+  <div id="bobines"></div>
+
+  <div class="section-head"><span class="section-title">Fil utilisé</span><span class="section-line"></span></div>
+  <div id="totaux"></div>
+
+  <div class="section-head"><span class="section-title">Impressions</span><span class="section-line"></span></div>
+  <div id="impressions"></div>
+
+  <footer>Poids estimés par Bambu Studio au lancement de chaque impression, purge comprise.<br>
+    BlokBambu ne fait qu'écouter l'imprimante : il ne lui envoie aucune commande.</footer>
+</main>
+
+<dialog id="fiche">
+  <form method="dialog" id="formulaire">
+    <div class="f-tete"><span class="f-titre" id="fTitre">Nouvelle bobine</span>
+      <button type="button" class="f-fermer" id="fFermer" aria-label="Fermer">×</button></div>
+    <div class="f-corps">
+      <div class="champ" id="cFixe"><span class="etiquette">Fil</span><div class="fixe" id="fFixe"></div></div>
+      <div class="champ" id="cCouleur"><span class="etiquette">Couleur</span><div class="choix" id="fCouleurs"></div></div>
+      <div class="champ" id="cType"><span class="etiquette">Type de fil</span><div class="choix" id="fTypes"></div></div>
+      <div class="champ"><span class="etiquette">Marque</span><div class="choix" id="fMarques"></div>
+        <input class="saisie" id="fMarqueLibre" type="text" maxlength="40" placeholder="Nom de la marque" autocomplete="off"
+               style="margin-top:10px; width:100%" hidden></div>
+      <div class="champ"><label for="fPoids">Fil sur la bobine</label>
+        <div class="poids"><input class="saisie" id="fPoids" type="number" min="1" max="20000" step="1" value="1000" required>
+          <span class="unite">g</span><div class="choix" id="fPresets"></div></div></div>
+    </div>
+    <div class="f-erreur" id="fErreur"></div>
+    <div class="f-pied">
+      <button type="button" class="btn danger" id="fRetirer">Ne plus suivre</button>
+      <span class="espace"></span>
+      <button type="button" class="btn" id="fAnnuler">Annuler</button>
+      <button type="submit" class="btn jaune" id="fValider">Enregistrer</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+"use strict";
+var MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+var PRESETS = [1000, 750, 500, 250];
+var etat = null, brut = "", fiche = null;
+
+function $(id) { return document.getElementById(id); }
+function e(t) { return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) {
+  return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+function nombre(x, d) { return x.toFixed(d).replace(".", ","); }
+function poids(g) {
+  if (g >= 1000) return nombre(g / 1000, 2).replace(/,?0+$/, "") + " kg";
+  return nombre(g, g < 100 ? 1 : 0).replace(/,0$/, "") + " g";
+}
+function longueur(m) { return nombre(m, m < 100 ? 1 : 0) + " m"; }
+function duree(s) { var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+  return h ? h + " h " + (m < 10 ? "0" : "") + m : Math.max(m, 1) + " min"; }
+function jour(iso, annee) { var d = new Date(iso);
+  return d.getDate() + " " + MOIS[d.getMonth()] + (annee ? " " + d.getFullYear() : ""); }
+function heure(iso) { var d = new Date(iso), m = d.getMinutes(); return d.getHours() + " h " + (m < 10 ? "0" : "") + m; }
+function pastille(c) { return '<span class="pastille" style="--c:' + e(c) + '"></span>'; }
+
+function ecrire(id, texte) {
+  var el = $(id);
+  if (el.textContent === texte) return;
+  var premier = el.textContent === "—";
+  el.textContent = texte;
+  if (!premier) { el.classList.remove("bumped"); void el.offsetWidth; el.classList.add("bumped"); }
+}
+
+function rendre() {
+  var s = etat, r = s.resume;
+  // Imprimante
+  var p = $("imprimante");
+  p.classList.toggle("on", s.imprimante.etat === "connectee");
+  p.title = s.imprimante.texte;
+  $("imprimanteTexte").innerHTML = 'Imprimante<span class="texte-long"> ' + e(s.imprimante.court) + "</span>";
+  var alerte = $("alerte");
+  alerte.hidden = !s.imprimante.alerte;
+  alerte.textContent = s.imprimante.alerte ? s.imprimante.texte : "";
+
+  // Chiffres du haut
+  ecrire("kFil", poids(r.g));
+  $("kDepuis").textContent = r.depuis ? "depuis le " + jour(r.depuis, true) : "aucune impression pour l'instant";
+  ecrire("kImpressions", String(r.impressions));
+  ecrire("kReste", s.bobines.length ? poids(r.reste) : "—");
+  $("kBobines").textContent = s.bobines.length ? s.bobines.length + (s.bobines.length > 1 ? " bobines suivies" : " bobine suivie") : "aucune bobine suivie";
+
+  // Bobines
+  var h = "";
+  s.bobines.forEach(function (b) {
+    var detail = [b.marque, b.type].filter(Boolean).join(" · ");
+    h += '<div class="bobine' + (b.bas ? " bas" : "") + '" style="--c:' + e(b.couleur) + '">' +
+      '<div class="b-haut">' + pastille(b.couleur) + '<span class="b-nom">' + e(b.nom) + "</span>" +
+      (b.emplacements.length ? '<span class="b-place">' + e(b.emplacements.join(" ")) + "</span>" : "") + "</div>" +
+      '<div class="b-detail">' + e(detail || "Marque non renseignée") + "</div>" +
+      '<div class="b-reste"><div class="n">' + poids(Math.max(b.reste, 0)) + '</div><div class="l">' +
+      (b.reste <= 0 ? "Vide" : b.bas ? "Bientôt vide" : "Restants") + " · posée le " + jour(b.depuis, false) + "</div></div>" +
+      '<div class="jauge"><i style="width:' + (100 * b.part).toFixed(1) + '%"></i></div>' +
+      '<div class="b-actions"><button class="btn" data-fiche="' + e(b.cle) + '">Nouvelle bobine</button></div></div>';
+  });
+  s.a_suivre.forEach(function (b) {
+    h += '<div class="bobine libre" style="--c:' + e(b.couleur) + '">' +
+      '<div class="b-haut">' + pastille(b.couleur) + '<span class="b-nom">' + e(b.nom) + "</span>" +
+      (b.emplacements.length ? '<span class="b-place">' + e(b.emplacements.join(" ")) + "</span>" : "") + "</div>" +
+      '<div class="b-detail">' + e([b.marque, b.type].filter(Boolean).join(" · ")) + "</div>" +
+      '<div class="b-reste"><div class="n" style="color:var(--muted)">—</div><div class="l">' +
+      (b.emplacements.length ? "Sur l'imprimante, pas suivie" : "Imprimée, pas suivie") + "</div></div>" +
+      '<div class="jauge"><i style="width:0"></i></div>' +
+      '<div class="b-actions"><button class="btn jaune" data-fiche="' + e(b.cle) + '">Suivre cette bobine</button></div></div>';
+  });
+  $("bobines").innerHTML = h ? '<div class="bobines">' + h + "</div>" :
+    '<div class="vide">Aucune bobine suivie.<br>Ajoutez celles que vous utilisez : chaque impression s\'en déduira.</div>';
+
+  // Fil utilisé
+  h = "";
+  var maxi = Math.max.apply(null, s.totaux.map(function (t) { return t.g; }).concat([1]));
+  s.totaux.forEach(function (t) {
+    h += '<div class="ligne" style="--c:' + e(t.couleur) + '">' + pastille(t.couleur) +
+      '<div class="l-nom couleur-nom"><b>' + e(t.nom) + "</b><span>" + e([t.type].concat(t.fils).filter(Boolean).join(" · ")) + "</span></div>" +
+      '<div class="l-barre"><i style="width:' + Math.max(100 * t.g / maxi, 1).toFixed(1) + '%"></i></div>' +
+      '<div class="l-note">' + longueur(t.m) + " · " + t.n + (t.n > 1 ? " impressions" : " impression") + "</div>" +
+      '<div class="l-chiffre">' + poids(t.g) + "</div></div>";
+  });
+  $("totaux").innerHTML = h ? '<div class="table">' + h + "</div>" :
+    '<div class="vide">Lancez une impression depuis Bambu Studio sur cet ordinateur :<br>elle apparaîtra ici, avec le fil utilisé par couleur.</div>';
+
+  // Impressions
+  h = "";
+  s.impressions.forEach(function (i) {
+    var plateau = i.plateaux.length === 1 ? "plateau " + i.plateaux[0] : "plateaux " + i.plateaux.join(", ");
+    h += '<div class="ligne impression"><div class="l-nom"><b>' + e(i.projet) + "</b><span>" +
+      jour(i.date, true) + " à " + heure(i.date) + " · " + plateau + " · " + duree(i.secondes) + "</span></div>" +
+      '<div class="fils">' + i.fils.map(function (f) { return '<span class="fil">' + pastille(f.couleur) + poids(f.g) + "</span>"; }).join("") +
+      "</div></div>";
+  });
+  $("impressions").innerHTML = h ? '<div class="table">' + h + "</div>" : '<div class="vide">Aucune impression comptée pour l\'instant.</div>';
+}
+
+function charger() {
+  return fetch("/api/etat", { cache: "no-store" }).then(function (r) { return r.text(); }).then(function (t) {
+    if (t === brut) return;
+    brut = t; etat = JSON.parse(t); rendre();
+  }).catch(function () {
+    var p = $("imprimante"); p.classList.remove("on"); p.title = "BlokBambu ne répond plus sur cet ordinateur.";
+    $("imprimanteTexte").textContent = "BlokBambu arrêté";
+  });
+}
+
+// ---------------------------------------------------------------- fiche d'une bobine
+
+function trouver(cle) {
+  var toutes = etat.bobines.concat(etat.a_suivre);
+  for (var i = 0; i < toutes.length; i++) if (toutes[i].cle === cle) return toutes[i];
+  return null;
+}
+
+function ouvrir(cle) {
+  var b = cle ? trouver(cle) : null;
+  var suivie = b && etat.bobines.some(function (x) { return x.cle === cle; });
+  fiche = { cle: cle || null, couleur: b ? b.couleur : null, type: b ? b.type : "PLA",
+            marque: b ? b.marque || "" : "", nouvelleMarque: false };
+  $("fTitre").textContent = !b ? "Ajouter une bobine" : suivie ? "Nouvelle bobine" : "Suivre cette bobine";
+  $("cFixe").hidden = !b; $("cCouleur").hidden = !!b; $("cType").hidden = !!b;
+  if (b) $("fFixe").innerHTML = pastille(b.couleur) + e(b.nom) + " <small>" + e(b.type) +
+    (b.emplacements.length ? " · emplacement " + e(b.emplacements.join(", ")) : "") + "</small>";
+  $("fRetirer").hidden = !suivie;
+  $("fPoids").value = 1000;
+  $("fMarqueLibre").value = ""; $("fMarqueLibre").hidden = true;
+  $("fErreur").textContent = "";
+  if (!b) {
+    var premiere = etat.couleurs[0];
+    if (premiere) { fiche.couleur = premiere.couleur; fiche.type = premiere.type; }
+  }
+  dessinerFiche();
+  $("fiche").showModal();
+}
+
+function dessinerFiche() {
+  var f = fiche, h = "";
+  etat.couleurs.forEach(function (c) {
+    h += '<button type="button" class="teinte' + (c.couleur === f.couleur ? " active" : "") + '" style="--c:' + e(c.couleur) +
+      '" data-couleur="' + e(c.couleur) + '" data-type="' + e(c.type) + '" title="' + e(c.nom + " " + c.couleur) + '" aria-label="' + e(c.nom) + '"></button>';
+  });
+  var libre = f.couleur && !etat.couleurs.some(function (c) { return c.couleur === f.couleur; });
+  h += '<label class="teinte-libre' + (libre ? " active" : "") + '" title="Autre couleur"' +
+    (libre ? ' style="background:' + e(f.couleur) + '; border-style:solid; box-shadow:0 0 0 2px var(--yellow)"' : "") + ">" +
+    (libre ? "" : "+") + '<input type="color" id="fCouleurLibre" value="' + e(f.couleur || "#ffb400") + '" aria-label="Autre couleur"></label>';
+  $("fCouleurs").innerHTML = h;
+  $("fTypes").innerHTML = etat.types.map(function (t) {
+    return '<button type="button" class="puce' + (t === f.type ? " active" : "") + '" data-type="' + e(t) + '">' + e(t) + "</button>"; }).join("");
+  var marques = etat.marques.slice();
+  if (f.marque && !f.nouvelleMarque && marques.indexOf(f.marque) < 0) marques.unshift(f.marque);
+  $("fMarques").innerHTML = marques.map(function (m) {
+    return '<button type="button" class="puce' + (!f.nouvelleMarque && m === f.marque ? " active" : "") + '" data-marque="' + e(m) + '">' + e(m) + "</button>"; }).join("") +
+    '<button type="button" class="puce plus' + (f.nouvelleMarque ? " active" : "") + '" data-marque-nouvelle="1">+ Nouvelle marque</button>';
+  $("fMarqueLibre").hidden = !f.nouvelleMarque;
+  var p = Number($("fPoids").value);
+  $("fPresets").innerHTML = PRESETS.map(function (g) {
+    return '<button type="button" class="puce' + (g === p ? " active" : "") + '" data-poids="' + g + '">' + poids(g) + "</button>"; }).join("");
+}
+
+function envoyer(chemin, champs) {
+  return fetch(chemin, { method: "POST", body: new URLSearchParams(champs) }).then(function (r) {
+    if (!r.ok) throw new Error("refus");
+    return charger();
+  });
+}
+
+$("fiche").addEventListener("click", function (ev) {
+  var c = ev.target.closest("button, label");
+  if (!c) return;
+  if (c.dataset.couleur) { fiche.couleur = c.dataset.couleur; fiche.type = c.dataset.type || fiche.type; dessinerFiche(); }
+  else if (c.dataset.type && c.classList.contains("puce")) { fiche.type = c.dataset.type; dessinerFiche(); }
+  else if (c.dataset.marque) { fiche.marque = fiche.marque === c.dataset.marque && !fiche.nouvelleMarque ? "" : c.dataset.marque; fiche.nouvelleMarque = false; dessinerFiche(); }
+  else if (c.dataset.marqueNouvelle) { fiche.nouvelleMarque = !fiche.nouvelleMarque; dessinerFiche(); if (fiche.nouvelleMarque) $("fMarqueLibre").focus(); }
+  else if (c.dataset.poids) { $("fPoids").value = c.dataset.poids; dessinerFiche(); }
+});
+$("fiche").addEventListener("input", function (ev) {
+  if (ev.target.id === "fCouleurLibre") { fiche.couleur = ev.target.value.toUpperCase(); }
+  if (ev.target.id === "fPoids") {
+    var p = Number(ev.target.value);
+    Array.prototype.forEach.call($("fPresets").children, function (b) { b.classList.toggle("active", Number(b.dataset.poids) === p); });
+  }
+});
+$("fiche").addEventListener("change", function (ev) { if (ev.target.id === "fCouleurLibre") dessinerFiche(); });
+$("fFermer").addEventListener("click", function () { $("fiche").close(); });
+$("fAnnuler").addEventListener("click", function () { $("fiche").close(); });
+$("fRetirer").addEventListener("click", function () {
+  envoyer("/retirer", { couleur: fiche.couleur, type: fiche.type }).then(function () { $("fiche").close(); })
+    .catch(function () { $("fErreur").textContent = "BlokBambu n'a pas pu enregistrer."; });
+});
+$("formulaire").addEventListener("submit", function (ev) {
+  ev.preventDefault();
+  var marque = fiche.nouvelleMarque ? $("fMarqueLibre").value.trim() : fiche.marque;
+  var grammes = Number($("fPoids").value);
+  if (!fiche.couleur) { $("fErreur").textContent = "Choisissez une couleur."; return; }
+  if (fiche.nouvelleMarque && !marque) { $("fErreur").textContent = "Écrivez le nom de la marque."; $("fMarqueLibre").focus(); return; }
+  if (!(grammes > 0)) { $("fErreur").textContent = "Indiquez le poids de fil sur la bobine."; return; }
+  envoyer("/bobine", { couleur: fiche.couleur, type: fiche.type, poids: String(grammes), marque: marque })
+    .then(function () { $("fiche").close(); })
+    .catch(function () { $("fErreur").textContent = "BlokBambu n'a pas pu enregistrer."; });
+});
+document.addEventListener("click", function (ev) {
+  var b = ev.target.closest("[data-fiche]");
+  if (b && etat) ouvrir(b.dataset.fiche);
+});
+$("ajouter").addEventListener("click", function () { if (etat) ouvrir(null); });
+
+charger();
+setInterval(function () { if (!document.hidden && !$("fiche").open) charger(); }, 3000);
+document.addEventListener("visibilitychange", function () { if (!document.hidden) charger(); });
+</script>
+</body>
+</html>

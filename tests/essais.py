@@ -62,6 +62,11 @@ def page(port, chemin="/", donnees=None, entetes=None):
         return 0, ""
 
 
+def etat(port):
+    """Ce que la page affiche : les données que le compteur lui sert."""
+    return json.loads(page(port, "/api/etat")[1])
+
+
 def envoi(racine, session, numero, fils, origine="Mon projet d'essai.3mf", plateau=1):
     """Pose le fichier que Bambu Studio écrit quand on lance une impression."""
     dossier = os.path.join(racine, "bamboo_model", "Mon_Oct_12", session)
@@ -149,7 +154,9 @@ def essais_a_part():
 
         print("Page")
         verifier("la page répond", attendre(lambda: page(port)[0] == 200))
-        verifier("la page porte le nom BlokBambu", "<h1>BlokBambu</h1>" in page(port)[1])
+        verifier("la page porte le nom BlokBambu", "<title>BlokBambu</title>" in page(port)[1])
+        verifier("le logo et l'icône sont servis", page(port, "/logo.png")[0] == 200 and page(port, "/icone.png")[0] == 200)
+        verifier("les données de la page sont servies", etat(port)["resume"]["impressions"] == 0)
 
         print("Impression lancée depuis Bambu Studio")
         envoi(racine, "12_00_00#1#1", 1, [("#161616", "PLA", 10.83), ("#FFFFFFFF", "PLA", 0.83)])
@@ -165,8 +172,11 @@ def essais_a_part():
 
         print("Bobines")
         origine = {"Origin": "http://127.0.0.1:%d" % port}
-        code, _ = page(port, "/bobine", b"couleur=%23161616&type=PLA&poids=1000", origine)
-        verifier("ajout d'une bobine", code == 303, str(code))
+        code, _ = page(port, "/bobine", b"couleur=%23161616&type=PLA&poids=1000&marque=eSUN", origine)
+        verifier("ajout d'une bobine", code == 200, str(code))
+        verifier("la marque de la bobine est gardée", etat(port)["bobines"][0]["marque"] == "eSUN")
+        verifier("poids invalide refusé", page(port, "/bobine", b"couleur=%23161616&type=PLA&poids=-5", origine)[0] == 400)
+        verifier("couleur invalide refusée", page(port, "/bobine", b"couleur=noir&type=PLA&poids=10", origine)[0] == 400)
         verifier("envoi venu d'un autre site refusé",
                  page(port, "/bobine", b"couleur=%23161616&type=PLA&poids=5", {"Origin": "http://exemple.fr"})[0] == 403)
         verifier("envoi sans origine refusé", page(port, "/bobine", b"couleur=%23161616&type=PLA&poids=5")[0] == 403)
@@ -174,14 +184,25 @@ def essais_a_part():
         time.sleep(1.2)  # la date de la bobine est à la seconde : l'impression suivante doit venir après
         envoi(racine, "12_00_00#1#1", 1, [("#161616", "PLA", 10.83), ("#FFFFFFFF", "PLA", 0.83)])
         verifier("une réimpression du même plateau compte une deuxième fois", attendre(lambda: len(journal(donnees)) == 2))
-        verifier("la bobine se déduit de l'impression", attendre(lambda: "<strong>989 g</strong>" in page(port)[1]))
-        page(port, "/bobine", b"couleur=%23161616&type=PLA&poids=1000", origine)
-        verifier("« Nouvelle bobine » remet à neuf", "<strong>1 kg</strong>" in page(port)[1])
+        verifier("la bobine se déduit de l'impression", attendre(lambda: etat(port)["bobines"][0]["reste"] == 989.17),
+                 str(etat(port)["bobines"]))
+        verifier("le blanc, imprimé sans bobine, est proposé au suivi",
+                 [b["cle"] for b in etat(port)["a_suivre"]] == ["#FFFFFF|PLA"], str(etat(port)["a_suivre"]))
+        page(port, "/bobine", b"couleur=%23161616&type=PLA&poids=1000&marque=Ma+Marque+Maison", origine)
+        b = etat(port)["bobines"][0]
+        verifier("« Nouvelle bobine » remet à neuf", b["reste"] == 1000 and b["part"] == 1, str(b))
+        verifier("une marque nouvelle est retenue et proposée ensuite",
+                 b["marque"] == "Ma Marque Maison" and "Ma Marque Maison" in etat(port)["marques"])
+        verifier("les marques de base sont proposées", {"Bambu Lab", "eSUN", "Polymaker"} <= set(etat(port)["marques"]))
+        verifier("marque devinée d'après le nom du fil dans Bambu Studio",
+                 compteur.marque_devinee(["eSUN PLA+"]) == "eSUN" and compteur.marque_devinee(["PolyTerra PLA"]) == "Polymaker"
+                 and compteur.marque_devinee(["Generic PLA"]) == "")
         page(port, "/retirer", b"couleur=%23161616&type=PLA", origine)
-        verifier("retrait d'une bobine", "<strong>1 kg</strong>" not in page(port)[1])
+        verifier("retrait d'une bobine", etat(port)["bobines"] == [])
 
         print("Imprimante")
-        verifier("liaison établie avec la fausse imprimante", attendre(lambda: "Imprimante connectée" in page(port)[1]))
+        verifier("liaison établie avec la fausse imprimante",
+                 attendre(lambda: etat(port)["imprimante"]["etat"] == "connectee"))
 
         def dicter(ligne):
             with open(dictee, "a", encoding="utf-8") as f:
@@ -198,7 +219,8 @@ def essais_a_part():
                         for i, c in enumerate(("76D9F4FF", "FFFFFFFF", "161616FF", "F98C36FF")))
         dicter('{"print":{"ams":{"ams":[{"id":"0","tray":[%s]}],"ams_exist_bits":"1","tray_exist_bits":"f"}}}' % bacs)
         dicter('{"print":{"nozzle_temper":25.1}}')
-        verifier("les bobines chargées sont proposées sur la page", attendre(lambda: "emplacement A3" in page(port)[1]))
+        verifier("les bobines chargées sont proposées sur la page, avec leur emplacement",
+                 attendre(lambda: {b["cle"]: b["emplacements"] for b in etat(port)["a_suivre"]}.get("#161616|PLA") == ["A3"]))
         dicter('{"print":{"ams":{"tray_exist_bits":"d"}}}')
         time.sleep(1.5)
         dicter('{"print":{"ams":{"tray_exist_bits":"f"}}}')
