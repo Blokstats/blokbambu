@@ -49,6 +49,8 @@ function Installer-BlokBambu {
         Remove-ItemProperty -Path $demarrage -Name "BlokBambu" -ErrorAction SilentlyContinue
         Remove-Item $raccourci -ErrorAction SilentlyContinue
         Write-Host "BlokBambu est retiré. Vos données restent dans $donnees"
+        # Sans cela, une réinstallation dans la même fenêtre retirerait de nouveau BlokBambu.
+        Remove-Item Env:BLOKBAMBU_ACTION -ErrorAction SilentlyContinue
         return
     }
 
@@ -56,7 +58,7 @@ function Installer-BlokBambu {
     if (-not $python -and (Get-Command winget -ErrorAction SilentlyContinue)) {
         Write-Host "Python n'est pas installé sur cet ordinateur : installation en cours, une minute ou deux..."
         try {
-            winget install -e --id Python.Python.3.12 --scope user --accept-package-agreements --accept-source-agreements | Out-Null
+            winget install -e --id Python.Python.3.12 --accept-package-agreements --accept-source-agreements | Out-Null
         } catch { }
         $python = Trouver-Python
     }

@@ -19,6 +19,7 @@ import json
 import os
 import re
 import socket
+import socketserver
 import ssl
 import struct
 import subprocess
@@ -586,6 +587,17 @@ def bobine_demandee(champs):
     return couleur, type_fil
 
 
+class Serveur(ThreadingHTTPServer):
+    # Sous Windows, cette option laisserait deux exemplaires écouter sur le même port.
+    allow_reuse_address = not WINDOWS
+
+    def server_bind(self):
+        # HTTPServer cherche ici le nom de l'ordinateur sur le réseau, ce qui peut bloquer des dizaines
+        # de secondes : la page ne sert que 127.0.0.1, ce nom est inutile.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = "127.0.0.1", self.server_address[1]
+
+
 def lancer_serveur(donnees, port, imprimante=None):
     adresses = ("127.0.0.1:%d" % port, "localhost:%d" % port)
 
@@ -648,7 +660,7 @@ def lancer_serveur(donnees, port, imprimante=None):
                 ecrire_page(donnees, port)
             self.repondre(303, b"", "text/plain", [("Location", "/")])
 
-    serveur = ThreadingHTTPServer(("127.0.0.1", port), Page)
+    serveur = Serveur(("127.0.0.1", port), Page)
     threading.Thread(target=serveur.serve_forever, daemon=True).start()
     return serveur
 
