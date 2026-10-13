@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Installe ou met à jour BlokBambu sur ce Mac : copie compteur.py hors du Bureau, lance le
+# BlokBambu pour macOS. Installe ou met à jour BlokBambu sur ce Mac : copie compteur.py hors du Bureau, lance le
 # programme de fond et pose le raccourci de la page.
 #
 #   installer.sh              installe ; le raccourci de la page va sur le Bureau
@@ -17,7 +17,7 @@ AGENT="$HOME/Library/LaunchAgents/$NOM.plist"
 PAGE="BlokBambu.html"
 BAMBU="$HOME/Library/Application Support/BambuStudio/BambuStudio.conf"
 
-[[ "$(uname)" == "Darwin" ]] || { echo "BlokBambu ne fonctionne que sur macOS."; exit 1; }
+[[ "$(uname)" == "Darwin" ]] || { echo "Cet installeur est celui du Mac. Pour Linux : installer-linux.sh ; pour Windows : installer.ps1."; exit 1; }
 
 RETIRER=0; DISCRET=0; DOSSIER=""
 for a in "$@"; do
@@ -62,7 +62,7 @@ mkdir -p "$DONNEES" "$HOME/Library/LaunchAgents"
 
 # compteur.py : celui posé à côté de ce script (dépôt téléchargé), sinon celui du dépôt en ligne.
 ICI=${0:A:h}
-if [[ -f "$ICI/compteur.py" ]]; then
+if [[ -f "$ICI/compteur.py" && -f "$ICI/installer.sh" ]]; then
   cp "$ICI/compteur.py" "$DONNEES/compteur.py"
 else
   curl -fsSL "$DEPOT/compteur.py" -o "$DONNEES/compteur.py.telecharge" \

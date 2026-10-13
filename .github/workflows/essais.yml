@@ -1,0 +1,56 @@
+name: Essais
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  essais:
+    name: ${{ matrix.systeme }}
+    runs-on: ${{ matrix.systeme }}
+    strategy:
+      fail-fast: false
+      matrix:
+        systeme: [macos-latest, ubuntu-latest, windows-latest]
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Le compteur, sur de fausses données et une fausse imprimante
+        run: python tests/essais.py
+
+      # Les installeurs sont lancés comme chez un ami, puis on vérifie que le compteur installé
+      # compte une impression, et que le retrait ne laisse rien tourner.
+      - name: Installation et retrait (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $env:BLOKBAMBU_DISCRET = "1"
+          $env:BLOKBAMBU_SOURCE = "$PWD\compteur.py"
+          Invoke-Expression (Get-Content -Raw -Encoding UTF8 installer.ps1)
+          python tests/essais.py --installe
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $env:BLOKBAMBU_ACTION = "retirer"
+          Invoke-Expression (Get-Content -Raw -Encoding UTF8 installer.ps1)
+          python tests/essais.py --retire
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Installation et retrait (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sh installer-linux.sh --discret
+          python tests/essais.py --installe
+          sh installer-linux.sh --retirer
+          python tests/essais.py --retire
+
+      - name: Installation et retrait (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          zsh installer.sh --discret
+          python tests/essais.py --installe
+          zsh installer.sh --retirer
+          python tests/essais.py --retire
