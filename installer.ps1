@@ -88,6 +88,7 @@ function Installer-BlokBambu {
     Move-Item $nouveau $fichier -Force
 
     # Démarrage à chaque ouverture de session, et lancement tout de suite.
+    if (-not (Test-Path $demarrage)) { New-Item -Path $demarrage -Force | Out-Null }
     Set-ItemProperty -Path $demarrage -Name "BlokBambu" -Value ('"{0}" "{1}" --journal' -f $pythonw, $fichier)
     Start-Process -FilePath $pythonw -ArgumentList ('"{0}"' -f $fichier), "--journal" -WindowStyle Hidden
 
