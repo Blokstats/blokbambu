@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Installe ou met à jour BlokFil sur ce Mac : copie compteur.py hors du Bureau, lance le
+# Installe ou met à jour BlokBambu sur ce Mac : copie compteur.py hors du Bureau, lance le
 # programme de fond et pose le raccourci de la page.
 #
 #   installer.sh              installe ; le raccourci de la page va sur le Bureau
@@ -9,15 +9,15 @@
 #   --discret                 n'ouvre pas la page à la fin
 set -e
 
-NOM=fr.blokcorp.blokfil
+NOM=fr.blokcorp.blokbambu
 PORT=47815
-DEPOT="https://raw.githubusercontent.com/Blokstats/blokfil/main"
-DONNEES="$HOME/Library/Application Support/BlokFil"
+DEPOT="https://raw.githubusercontent.com/Blokstats/blokbambu/main"
+DONNEES="$HOME/Library/Application Support/BlokBambu"
 AGENT="$HOME/Library/LaunchAgents/$NOM.plist"
-PAGE="FIL PAR COULEUR.html"
+PAGE="BlokBambu.html"
 BAMBU="$HOME/Library/Application Support/BambuStudio/BambuStudio.conf"
 
-[[ "$(uname)" == "Darwin" ]] || { echo "BlokFil ne fonctionne que sur macOS."; exit 1; }
+[[ "$(uname)" == "Darwin" ]] || { echo "BlokBambu ne fonctionne que sur macOS."; exit 1; }
 
 RETIRER=0; DISCRET=0; DOSSIER=""
 for a in "$@"; do
@@ -39,7 +39,7 @@ if (( RETIRER )); then
   rm -f "$AGENT"
   LIEN="${ANCIEN:-$HOME/Desktop}/$PAGE"
   [[ -L "$LIEN" ]] && rm "$LIEN"
-  echo "BlokFil est retiré. Vos données restent dans $DONNEES"
+  echo "BlokBambu est retiré. Vos données restent dans $DONNEES"
   exit 0
 fi
 
@@ -52,7 +52,7 @@ elif command -v python3 &>/dev/null && [[ "$(command -v python3)" != /usr/bin/py
   PYTHON="$(command -v python3)"
 else
   echo "Il manque Python sur ce Mac. Lancez cette commande, acceptez l'installation proposée par macOS,"
-  echo "puis relancez l'installation de BlokFil :"
+  echo "puis relancez l'installation de BlokBambu :"
   echo
   echo "    xcode-select --install"
   exit 1
@@ -117,13 +117,13 @@ for i in {1..50}; do
   sleep 0.3
 done
 
-echo "BlokFil est installé."
+echo "BlokBambu est installé."
 echo "  Page      : http://127.0.0.1:$PORT/"
 echo "  Raccourci : $DOSSIER/$PAGE"
 if [[ ! -f "$BAMBU" ]]; then
   echo
   echo "Bambu Studio n'a pas été trouvé sur ce Mac. Installez-le et connectez-le à votre imprimante :"
-  echo "BlokFil s'en servira tout seul, sans réinstallation."
+  echo "BlokBambu s'en servira tout seul, sans réinstallation."
 fi
 echo
 echo "Si macOS demande d'autoriser « Python » à accéder au réseau local, acceptez : c'est ce qui"

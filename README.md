@@ -1,4 +1,4 @@
-# BlokFil
+# BlokBambu
 
 Un compteur de fil pour les imprimantes Bambu Lab, sur Mac.
 
@@ -6,9 +6,9 @@ Un compteur de fil pour les imprimantes Bambu Lab, sur Mac.
 - **Bobines** : la page montre ce qu'il reste sur chaque bobine. Un bouton « Nouvelle bobine » la remet à neuf.
 - **Alerte** : une fenêtre vous prévient quand une bobine est chargée, changée ou retirée de l'imprimante, pour penser à mettre la page à jour.
 
-Tout tourne sur votre Mac. Rien n'est envoyé sur Internet, et BlokFil n'envoie aucune commande à l'imprimante.
+Tout tourne sur votre Mac. Rien n'est envoyé sur Internet, et BlokBambu n'envoie aucune commande à l'imprimante.
 
-![La page de BlokFil](apercu.png)
+![La page de BlokBambu](apercu.png)
 
 ## Ce qu'il faut
 
@@ -21,14 +21,14 @@ Tout tourne sur votre Mac. Rien n'est envoyé sur Internet, et BlokFil n'envoie 
 Ouvrez l'application **Terminal**, collez cette ligne et validez :
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Blokstats/blokfil/main/installer.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/Blokstats/blokbambu/main/installer.sh | zsh
 ```
 
-La page s'ouvre toute seule à la fin, et un raccourci `FIL PAR COULEUR.html` est posé sur le Bureau.
+La page s'ouvre toute seule à la fin, et un raccourci `BlokBambu.html` est posé sur le Bureau.
 
 macOS peut poser deux questions pendant ou après l'installation. Acceptez les deux :
 
-- **Installer les outils de ligne de commande** : c'est Python, dont BlokFil a besoin. Une fois l'installation d'Apple terminée, relancez la ligne ci-dessus.
+- **Installer les outils de ligne de commande** : c'est Python, dont BlokBambu a besoin. Une fois l'installation d'Apple terminée, relancez la ligne ci-dessus.
 - **Autoriser « Python » à accéder au réseau local** : c'est ce qui permet d'être prévenu quand une bobine change. Si vous avez refusé, l'autorisation se donne dans Réglages Système › Confidentialité et sécurité › Réseau local.
 
 ## S'en servir
@@ -51,20 +51,20 @@ Une bobine passe en rouge quand il lui reste moins de 100 g.
 
 Pour mettre à jour, relancez la ligne d'installation : vos données sont gardées.
 
-Pour retirer BlokFil :
+Pour retirer BlokBambu :
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Blokstats/blokfil/main/installer.sh | zsh -s -- --retirer
+curl -fsSL https://raw.githubusercontent.com/Blokstats/blokbambu/main/installer.sh | zsh -s -- --retirer
 ```
 
-Vos données restent dans `~/Library/Application Support/BlokFil`. Supprimez ce dossier pour tout effacer.
+Vos données restent dans `~/Library/Application Support/BlokBambu`. Supprimez ce dossier pour tout effacer.
 
 ## Comment ça marche
 
-BlokFil est un petit programme en Python (`compteur.py`, sans dépendance) que macOS garde lancé en fond.
+BlokBambu est un petit programme en Python (`compteur.py`, sans dépendance) que macOS garde lancé en fond.
 
-- **Les impressions.** Quand vous cliquez sur « Imprimer », Bambu Studio écrit sur le Mac le fichier qu'il envoie à l'imprimante. BlokFil le repère et y lit le poids de chaque fil.
-- **Les bobines.** BlokFil écoute ce que l'imprimante annonce sur le réseau local, comme le fait Bambu Studio. Pour s'y connecter, il lit le code d'accès que Bambu Studio garde déjà sur le Mac, et vérifie que c'est bien votre imprimante avant de le présenter. Il écoute seulement : il ne peut ni lancer ni arrêter une impression.
+- **Les impressions.** Quand vous cliquez sur « Imprimer », Bambu Studio écrit sur le Mac le fichier qu'il envoie à l'imprimante. BlokBambu le repère et y lit le poids de chaque fil.
+- **Les bobines.** BlokBambu écoute ce que l'imprimante annonce sur le réseau local, comme le fait Bambu Studio. Pour s'y connecter, il lit le code d'accès que Bambu Studio garde déjà sur le Mac, et vérifie que c'est bien votre imprimante avant de le présenter. Il écoute seulement : il ne peut ni lancer ni arrêter une impression.
 - **La page** n'est visible que depuis votre Mac (`127.0.0.1`).
 
 Le code d'accès n'est recopié nulle part, et aucune donnée ne quitte le Mac.

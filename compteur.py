@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""BlokFil — compte le fil utilisé par couleur à chaque impression lancée depuis Bambu Studio.
+"""BlokBambu — compte le fil utilisé par couleur à chaque impression lancée depuis Bambu Studio.
 
 Quand on clique sur « Imprimer », Bambu Studio écrit le fichier envoyé à l'imprimante dans
 son dossier de travail temporaire : <tmp>/bamboo_model/<jour>/<session>/Metadata/.<pid>.<n>.3mf
@@ -31,8 +31,8 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
 
-DONNEES = os.path.expanduser("~/Library/Application Support/BlokFil")
-PAGE = "FIL PAR COULEUR.html"
+DONNEES = os.path.expanduser("~/Library/Application Support/BlokBambu")
+PAGE = "BlokBambu.html"
 PORT = 47815
 PAUSE = 3  # secondes entre deux passages
 BOBINE_NEUVE = 1000  # grammes
@@ -506,9 +506,9 @@ def rendre(donnees, port, vivant, imprimante=None):
     return "".join([
         '<!doctype html>\n<html lang="fr"><head><meta charset="utf-8">\n',
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n',
-        '<meta name="color-scheme" content="light dark">\n<title>Fil par couleur</title>\n',
+        '<meta name="color-scheme" content="light dark">\n<title>BlokBambu</title>\n',
         "<style>", STYLE, "</style></head><body><main>\n",
-        "<h1>Fil par couleur</h1>\n", '<p class="resume">%s</p>\n' % e(resume), "\n".join(corps),
+        "<h1>BlokBambu</h1>\n", '<p class="resume">%s</p>\n' % e(resume), "\n".join(corps),
         "\n<footer>Poids estimés par Bambu Studio au lancement de chaque impression, purge comprise. ",
         "Mis à jour le %s à %02d h %02d.</footer>\n" % (jour(maintenant), maintenant.hour, maintenant.minute),
         "</main>", saut, "</body></html>\n"])
@@ -751,7 +751,7 @@ class Imprimante(threading.Thread):
             if sujet.get("commonName") != serie:
                 raise Refus("l'appareil à cette adresse n'est pas l'imprimante attendue")
             liaison.sendall(paquet_mqtt(0x10, chaine_mqtt("MQTT") + bytes([4, 0xC2]) + struct.pack("!H", 60)
-                                        + chaine_mqtt("blokfil-%d" % os.getpid()) + chaine_mqtt("bblp")
+                                        + chaine_mqtt("blokbambu-%d" % os.getpid()) + chaine_mqtt("bblp")
                                         + chaine_mqtt(code)))
             flux = Flux(liaison)
             reponse = flux.paquet()
@@ -852,7 +852,7 @@ class Imprimante(threading.Thread):
                                       for l in texte.split("\n") + ["", "Pensez à mettre la page des bobines à jour."])
         with self.fenetres:  # une seule fenêtre à la fois
             r = subprocess.run(["/usr/bin/osascript", "-e", "tell me to activate", "-e",
-                                'display dialog %s with title "Fil par couleur" buttons {"Plus tard", "Ouvrir la page"} '
+                                'display dialog %s with title "BlokBambu" buttons {"Plus tard", "Ouvrir la page"} '
                                 'default button 2' % message], capture_output=True, text=True)
         if "Ouvrir la page" in r.stdout:
             subprocess.run(["/usr/bin/open", "http://127.0.0.1:%d/" % self.port])
