@@ -15,7 +15,7 @@ DEPOT="https://raw.githubusercontent.com/Blokstats/blokbambu/main"
 DONNEES="$HOME/Library/Application Support/BlokBambu"
 AGENT="$HOME/Library/LaunchAgents/$NOM.plist"
 PAGE="BlokBambu.html"
-FICHIERS=(compteur.py page.html police.woff2)
+FICHIERS=(compteur.py page.html police.woff2 alerte.swift)
 BAMBU="$HOME/Library/Application Support/BambuStudio/BambuStudio.conf"
 
 [[ "$(uname)" == "Darwin" ]] || { echo "Cet installeur est celui du Mac. Pour Linux : installer-linux.sh ; pour Windows : installer.ps1."; exit 1; }
@@ -73,6 +73,17 @@ for f in $FICHIERS; do
   fi
 done
 for f in $FICHIERS; do mv "$DONNEES/$f.nouveau" "$DONNEES/$f"; done
+
+# La fenêtre d'alerte aux couleurs de la page se compile ici. Si ce n'est pas possible, BlokBambu
+# montre la fenêtre du système à la place : l'installation continue.
+if command -v swiftc &>/dev/null; then
+  echo "Préparation de la fenêtre d'alerte…"
+  if swiftc -O "$DONNEES/alerte.swift" -o "$DONNEES/alerte.nouveau" &>/dev/null; then
+    mv "$DONNEES/alerte.nouveau" "$DONNEES/alerte"
+  else
+    rm -f "$DONNEES/alerte.nouveau"
+  fi
+fi
 
 # Le dossier du raccourci : celui demandé, sinon celui de la dernière fois, sinon le Bureau.
 [[ -n "$DOSSIER" ]] && DOSSIER="${DOSSIER:A}"

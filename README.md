@@ -133,5 +133,6 @@ Les titres de la page sont en Archivo, une police libre (SIL Open Font License, 
 |---|---|
 | `compteur.py` | le programme : repère les impressions, écoute l'imprimante, sert la page |
 | `page.html`, `police.woff2` | la page et la police de ses titres |
+| `alerte.swift` | la fenêtre d'alerte sur Mac, aux couleurs de la page (sur Windows et Linux, c'est une fenêtre du système) |
 | `installer.sh`, `installer.ps1`, `installer-linux.sh` | les installeurs pour Mac, Windows et Linux |
 | `tests/` | les essais, rejoués sur macOS, Windows et Linux à chaque modification, avec une fausse imprimante |

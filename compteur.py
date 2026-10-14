@@ -352,6 +352,15 @@ def attribuer_bacs(entree, utilises, bobines, fin):
 def demander(texte, rappel=""):
     """Affiche la fenêtre d'alerte. Rend True si la personne veut ouvrir la page."""
     if MAC:
+        # La fenêtre aux couleurs de la page, compilée à l'installation ; à défaut, celle du système.
+        dessinee = os.path.join(os.path.dirname(os.path.abspath(__file__)), "alerte")
+        if os.access(dessinee, os.X_OK):
+            try:
+                code = subprocess.run([dessinee, texte, rappel]).returncode
+                if code in (0, 1):
+                    return code == 0
+            except OSError:
+                pass
         lignes = " & return & ".join('"%s"' % l.replace("\\", "\\\\").replace('"', '\\"')
                                      for l in texte.split("\n") + (["", rappel] if rappel else []))
         r = subprocess.run(["/usr/bin/osascript", "-e", "tell me to activate", "-e",

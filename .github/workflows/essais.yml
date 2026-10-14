@@ -50,7 +50,9 @@ jobs:
       - name: Installation et retrait (macOS)
         if: runner.os == 'macOS'
         run: |
+          swiftc -O alerte.swift -o "$RUNNER_TEMP/alerte"
           zsh installer.sh --discret
+          test -x "$HOME/Library/Application Support/BlokBambu/alerte"
           python tests/essais.py --installe
           zsh installer.sh --retirer
           python tests/essais.py --retire
