@@ -13,7 +13,7 @@ PAGE="http://127.0.0.1:$PORT/"
 DONNEES="${XDG_DATA_HOME:-$HOME/.local/share}/blokbambu"
 DEMARRAGE="${XDG_CONFIG_HOME:-$HOME/.config}/autostart/blokbambu.desktop"
 MENU="${XDG_DATA_HOME:-$HOME/.local/share}/applications/blokbambu.desktop"
-FICHIERS="compteur.py page.html police.woff2"
+FICHIERS="compteur.py page.html police.woff2 version.txt"
 
 [ "$(uname)" = "Linux" ] || { echo "Cet installeur est celui de Linux. Pour Mac : installer.sh ; pour Windows : installer.ps1."; exit 1; }
 

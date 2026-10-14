@@ -36,11 +36,13 @@ header{ height:56px; background:var(--panel); border-bottom:1px solid var(--bord
 .h-nom{ font-family:var(--titre); font-weight:900; font-size:14px; letter-spacing:.04em; color:#fff; margin-right:auto; }
 .h-nom span{ color:var(--yellow); }
 .h-etat{ display:flex; align-items:center; gap:7px; border:1px solid var(--border); border-radius:7px; color:var(--muted2);
-  font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:8px 12px; white-space:nowrap; }
+  font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:8px 12px; white-space:nowrap;
+  min-width:0; overflow:hidden; }
 .h-etat .dot{ width:7px; height:7px; border-radius:50%; background:var(--muted); flex-shrink:0; }
 .h-etat.on{ color:var(--text); border-color:var(--border2); }
 .h-etat.on .dot{ background:var(--pink); animation:pulse 1.6s ease-in-out infinite; }
-.h-bouton{ background:none; border:1px solid var(--border); border-radius:7px; color:var(--muted2); cursor:pointer;
+#imprimanteTexte{ overflow:hidden; text-overflow:ellipsis; }
+.h-bouton{ background:none; border:1px solid var(--border); border-radius:7px; color:var(--muted2); cursor:pointer; flex-shrink:0;
   width:34px; height:34px; display:flex; align-items:center; justify-content:center; transition:color .15s, border-color .15s; }
 .h-bouton:hover{ color:#fff; border-color:var(--border2); }
 .h-bouton svg{ width:16px; height:16px; display:block; }
@@ -56,7 +58,7 @@ main{ position:relative; z-index:1; max-width:1100px; margin:0 auto; padding:32p
 /* Titres de section */
 .section-head{ display:flex; align-items:center; gap:10px; margin:34px 0 16px; }
 .section-title{ font-family:var(--titre); font-weight:900; font-size:11px;
-  letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+  letter-spacing:.1em; text-transform:uppercase; color:var(--muted); white-space:nowrap; }
 .section-line{ flex:1; height:1px; background:var(--border); }
 
 /* Les chiffres du haut */
@@ -69,12 +71,45 @@ main{ position:relative; z-index:1; max-width:1100px; margin:0 auto; padding:32p
 
 /* Boutons */
 .btn{ background:none; border:1px solid var(--border); border-radius:7px; color:var(--muted2); cursor:pointer;
-  font-size:12px; font-weight:600; padding:8px 13px; letter-spacing:.02em; transition:color .15s, border-color .15s, background .15s; }
+  font-size:12px; font-weight:600; padding:8px 13px; letter-spacing:.02em; white-space:nowrap;
+  transition:color .15s, border-color .15s, background .15s; }
 .btn:hover{ color:#fff; border-color:var(--border2); }
 .btn.jaune{ background:var(--yellow); border-color:var(--yellow); color:#000; font-weight:700; }
 .btn.jaune:hover{ background:#ffc233; color:#000; }
-.btn.danger:hover{ color:#e55; border-color:#e55; }
+.btn.danger:hover, .btn.sur{ color:#e55; border-color:#e55; }
 .btn.petit{ padding:5px 9px; font-size:11px; }
+.btn:disabled{ opacity:.5; cursor:default; }
+
+/* Imprimantes */
+.imprimantes{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px; }
+.imprimante{ background:var(--panel); border:1px solid var(--border); border-radius:var(--r);
+  padding:18px 20px; display:flex; flex-direction:column; gap:14px; min-width:0; }
+.i-haut{ display:flex; align-items:center; gap:10px; min-width:0; }
+.i-nom{ font-family:var(--titre); font-weight:900; font-size:12px; color:#fff; letter-spacing:.02em;
+  text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.i-etat{ margin-left:auto; display:flex; align-items:center; gap:7px; font-size:11px; font-weight:700;
+  letter-spacing:.06em; text-transform:uppercase; color:var(--muted2); white-space:nowrap; }
+.i-etat .dot{ width:7px; height:7px; border-radius:50%; background:var(--muted); flex-shrink:0; }
+.i-etat.on{ color:var(--text); }
+.i-etat.on .dot{ background:var(--text); }
+.i-etat.alerte{ color:var(--pink); }
+.i-etat.alerte .dot{ background:var(--pink); }
+.i-tache{ min-width:0; }
+.i-tache b{ display:block; font-size:13px; font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.i-tache span{ display:block; font-size:12px; color:var(--muted2); margin-top:2px; }
+.i-tache .mot{ color:var(--pink); }
+.i-tache .jauge{ margin-top:10px; }
+.i-places{ display:flex; flex-wrap:wrap; gap:6px 8px; align-items:flex-start; align-content:flex-start; flex:1 0 auto; }
+.i-place{ display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--text); background:var(--panel2);
+  border:1px solid var(--border); border-radius:6px; padding:5px 10px 5px 8px; white-space:nowrap; }
+.i-place b{ font-family:var(--titre); font-weight:900; font-size:10px; color:var(--muted2); letter-spacing:.04em; }
+.i-place .pastille{ width:9px; height:9px; }
+.i-place.sans{ color:var(--muted); border-style:dashed; background:none; }
+.i-chiffres{ display:grid; grid-template-columns:repeat(4,auto); justify-content:space-between; gap:10px 16px;
+  border-top:1px solid var(--border); padding-top:14px; }
+.i-chiffres .n{ font-family:var(--titre); font-weight:900; font-size:14px; color:#fff; white-space:nowrap; }
+.i-chiffres .l{ font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-top:5px; }
+.i-total{ font-size:12px; color:var(--muted); margin-top:-4px; }
 
 /* Bobines */
 .bobines{ display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:14px; }
@@ -87,9 +122,11 @@ main{ position:relative; z-index:1; max-width:1100px; margin:0 auto; padding:32p
   box-shadow:0 0 0 1px rgba(255,255,255,.28); }
 .b-nom{ font-family:var(--titre); font-weight:900; font-size:12px; color:#fff; letter-spacing:.02em;
   text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.b-place{ margin-left:auto; font-family:var(--titre); font-weight:900; font-size:10px; color:var(--text);
-  background:rgba(255,255,255,.06); border:1px solid var(--border2); padding:2px 7px; border-radius:4px; letter-spacing:.04em;
-  white-space:nowrap; }
+.b-place{ margin-left:auto; font-family:var(--titre); font-weight:900; font-size:10px; color:var(--text); cursor:pointer;
+  background:rgba(255,255,255,.06); border:1px solid var(--border2); padding:3px 7px; border-radius:4px; letter-spacing:.04em;
+  white-space:nowrap; transition:border-color .15s, color .15s; }
+.b-place:hover{ color:#fff; border-color:rgba(255,255,255,.3); }
+.b-place.absente, .b-place.aucune{ border-style:dashed; color:var(--muted2); background:none; }
 .b-detail{ font-size:12px; color:var(--muted2); margin-top:-8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .b-reste .n{ font-family:var(--titre); font-weight:900; font-size:24px; color:#fff; line-height:1; }
 .b-reste .l{ font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-top:6px; }
@@ -100,7 +137,7 @@ main{ position:relative; z-index:1; max-width:1100px; margin:0 auto; padding:32p
 .b-plus{ font-size:12px; color:var(--muted2); margin-top:-4px; }
 .b-plus .alerte-mot{ color:var(--pink); font-weight:600; }
 .b-actions{ display:flex; gap:8px; margin-top:auto; }
-.b-actions .btn{ flex:1 1 auto; white-space:nowrap; padding:8px 10px; }
+.b-actions .btn{ flex:1 1 auto; padding:8px 10px; }
 
 /* Listes */
 .table{ background:var(--panel); border:1px solid var(--border); border-radius:var(--r); overflow:hidden; }
@@ -118,6 +155,7 @@ main{ position:relative; z-index:1; max-width:1100px; margin:0 auto; padding:32p
 .fils{ margin-left:auto; display:flex; flex-wrap:wrap; gap:6px 14px; justify-content:flex-end; }
 .fil{ display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text); white-space:nowrap; font-variant-numeric:tabular-nums; }
 .fil .pastille{ width:9px; height:9px; }
+.filtres{ display:flex; flex-wrap:wrap; gap:7px; margin:-4px 0 14px; }
 .vide{ text-align:center; color:var(--muted2); font-size:12px; line-height:1.6; padding:34px 20px;
   background:var(--panel); border:1px solid var(--border); border-radius:var(--r); }
 .alerte{ font-size:13px; line-height:1.5; color:var(--text); background:rgba(239,0,202,.07);
@@ -129,26 +167,39 @@ main{ position:relative; z-index:1; max-width:1100px; margin:0 auto; padding:32p
 .avis small{ display:block; color:var(--muted); font-size:12px; margin-top:4px; }
 .avis .f-fermer{ margin-left:0; flex-shrink:0; }
 .tout-fermer{ display:flex; justify-content:flex-end; margin:-6px 0 14px; }
+/* Une version plus récente est parue : une annonce, pas une alerte. */
+.maj{ display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap; font-size:13px; line-height:1.5; color:var(--text);
+  background:var(--panel); border:1px solid var(--border2); border-radius:var(--r); padding:14px 16px; margin-bottom:14px; }
+.maj > div{ flex:1 1 300px; min-width:0; }
+.maj strong{ display:block; color:#fff; font-weight:600; }
+.maj small{ display:block; color:var(--muted2); font-size:12px; margin-top:3px; }
+.maj code, .lien{ display:block; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; color:var(--muted2);
+  background:var(--panel2); border:1px solid var(--border); border-radius:6px; padding:7px 9px; overflow-x:auto;
+  white-space:nowrap; user-select:all; -webkit-user-select:all; }
+.maj code{ margin-top:9px; }
+.maj .f-fermer{ margin-left:0; }
 footer{ color:var(--muted); font-size:12px; margin-top:30px; line-height:1.6; }
 
 /* Fiches */
 dialog{ background:var(--panel); color:var(--text); border:1px solid var(--border2); border-radius:14px; padding:0;
-  width:min(500px, calc(100vw - 28px)); margin:auto; box-shadow:0 24px 80px rgba(0,0,0,.7); }
+  width:min(520px, calc(100vw - 28px)); margin:auto; box-shadow:0 24px 80px rgba(0,0,0,.7); }
 dialog::backdrop{ background:rgba(0,0,0,.7); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
 .f-tete{ display:flex; align-items:center; gap:10px; padding:18px 22px; border-bottom:1px solid var(--border); }
 .f-titre{ font-family:var(--titre); font-weight:900; font-size:13px; color:#fff; letter-spacing:.04em; text-transform:uppercase;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .f-fermer{ margin-left:auto; background:none; border:1px solid var(--border); border-radius:5px; color:var(--muted2);
-  cursor:pointer; font-size:15px; line-height:1; padding:4px 8px; }
+  cursor:pointer; font-size:15px; line-height:1; padding:4px 8px; flex-shrink:0; }
 .f-fermer:hover{ color:#fff; border-color:var(--border2); }
 .f-corps{ padding:20px 22px 4px; display:flex; flex-direction:column; gap:20px; }
+.champ{ min-width:0; }
 .champ > label, .champ > .etiquette{ display:block; font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
   color:var(--muted2); margin-bottom:9px; }
 .aide{ font-size:12px; color:var(--muted); line-height:1.5; margin-top:8px; }
 .deux{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-.choix{ display:flex; flex-wrap:wrap; gap:7px; }
+.choix{ display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
+.groupe{ flex-basis:100%; font-size:11px; color:var(--muted); margin-top:4px; }
 .puce{ background:var(--panel2); border:1px solid var(--border); border-radius:7px; color:var(--muted2); cursor:pointer;
-  font-size:12px; font-weight:600; padding:7px 11px; transition:color .15s, border-color .15s, background .15s; }
+  font-size:12px; font-weight:600; padding:7px 11px; white-space:nowrap; transition:color .15s, border-color .15s, background .15s; }
 .puce:hover{ color:#fff; border-color:var(--border2); }
 .puce.active{ background:var(--yellow); border-color:var(--yellow); color:#000; font-weight:700; }
 .puce.plus{ border-style:dashed; }
@@ -162,17 +213,39 @@ dialog::backdrop{ background:rgba(0,0,0,.7); backdrop-filter:blur(3px); -webkit-
 .fixe{ display:flex; align-items:center; gap:10px; font-size:13px; color:#fff; font-weight:600; }
 .fixe small{ color:var(--muted2); font-weight:400; font-size:12px; }
 .saisie{ background:var(--panel2); border:1px solid var(--border); border-radius:7px; color:#fff; font-size:15px;
-  padding:9px 12px; outline:none; transition:border-color .15s; }
+  padding:9px 12px; outline:none; min-width:0; transition:border-color .15s; }
 .saisie:focus{ border-color:rgba(255,180,0,.45); }
+.saisie.large{ width:100%; }
+select.saisie{ font-size:13px; padding:10px 10px; }
 .avec-unite{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .avec-unite .saisie{ width:104px; text-align:right; font-variant-numeric:tabular-nums; }
+.avec-unite .saisie.court{ width:68px; }
 .avec-unite .unite{ color:var(--muted2); font-size:13px; }
+.fil-ligne{ display:flex; align-items:center; gap:8px; margin-bottom:8px; min-width:0; }
+.fil-ligne select{ flex:1 1 0; }
+.fil-ligne input{ width:92px; text-align:right; font-variant-numeric:tabular-nums; flex-shrink:0; }
+.fil-ligne .unite{ color:var(--muted2); font-size:13px; }
+.fil-ligne .pese{ font-size:13px; color:var(--text); white-space:nowrap; font-variant-numeric:tabular-nums; min-width:70px; text-align:right; }
+.fil-ligne .f-fermer{ margin-left:0; }
 .f-pied{ display:flex; align-items:center; gap:10px; padding:18px 22px 20px; }
 .f-pied .espace{ flex:1; }
-.f-erreur{ color:var(--pink); font-size:12px; padding:0 22px; min-height:16px; }
+.f-erreur{ color:var(--pink); font-size:12px; padding:0 22px; min-height:16px; line-height:1.5; }
 .acces{ background:var(--panel2); border:1px solid var(--border); border-radius:9px; padding:14px 16px; display:grid; gap:10px; }
 .acces div{ display:flex; justify-content:space-between; gap:14px; font-size:13px; color:var(--muted2); }
 .acces b{ color:#fff; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:14px; font-weight:600; user-select:all; }
+/* Réglages : les imprimantes */
+.r-liste{ border:1px solid var(--border); border-radius:9px; overflow:hidden; margin-bottom:10px; }
+.r-imprimante{ padding:12px 14px; border-bottom:1px solid var(--border); }
+.r-imprimante:last-child{ border-bottom:none; }
+.r-ligne{ display:flex; align-items:center; gap:10px; min-width:0; }
+.r-ligne .saisie{ flex:1 1 0; font-size:14px; padding:7px 10px; }
+.r-nom{ flex:1 1 0; font-size:14px; color:var(--muted2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.r-note{ font-size:12px; color:var(--muted); margin-top:7px; }
+.r-ajout{ background:var(--panel2); border:1px solid var(--border); border-radius:9px; padding:16px; display:grid; gap:14px; }
+.r-ajout .saisie{ background:var(--panel); }
+.r-ajout .f-erreur{ padding:0; }
+.r-boutons{ display:flex; justify-content:flex-end; gap:10px; }
+.r-version{ font-size:12px; color:var(--muted); }
 
 @media (max-width:900px){ .total-row{ grid-template-columns:1fr 1fr; } }
 @media (max-width:760px){
@@ -185,7 +258,9 @@ dialog::backdrop{ background:rgba(0,0,0,.7); backdrop-filter:blur(3px); -webkit-
   .ligne.impression .l-nom{ flex:1 1 0; }
   .ligne.impression .l-nom span{ white-space:normal; }
   .fils{ margin-left:0; justify-content:flex-start; width:100%; order:3; }
+  .i-chiffres{ grid-template-columns:1fr 1fr; justify-content:stretch; }
   input, select, button{ font-size:16px; }
+  select.saisie{ font-size:16px; }
 }
 @media (max-width:440px){ .total-row{ grid-template-columns:1fr; } .deux{ grid-template-columns:1fr; } }
 </style>
@@ -207,6 +282,12 @@ dialog::backdrop{ background:rgba(0,0,0,.7); backdrop-filter:blur(3px); -webkit-
     <div class="total-card"><div class="total-label">Reste sur les bobines</div><div class="total-value" id="kReste">—</div><div class="total-sous" id="sReste">&nbsp;</div></div>
   </div>
 
+  <div id="zoneImprimantes" hidden>
+    <div class="section-head"><span class="section-title" id="tImprimantes">Imprimante</span><span class="section-line"></span>
+      <button class="btn petit" id="gerer" hidden>Gérer</button></div>
+    <div id="imprimantes"></div>
+  </div>
+
   <div class="section-head">
     <span class="section-title">Bobines</span><span class="section-line"></span>
     <button class="btn jaune" id="ajouter">+ Ajouter une bobine</button>
@@ -219,11 +300,13 @@ dialog::backdrop{ background:rgba(0,0,0,.7); backdrop-filter:blur(3px); -webkit-
   <div class="section-head"><span class="section-title">Par mois</span><span class="section-line"></span></div>
   <div id="mois"></div>
 
-  <div class="section-head"><span class="section-title">Impressions</span><span class="section-line"></span></div>
+  <div class="section-head"><span class="section-title">Impressions</span><span class="section-line"></span>
+    <button class="btn" id="ajouterImpression">+ Ajouter une impression</button></div>
+  <div class="filtres" id="filtres" hidden></div>
   <div id="impressions"></div>
 
   <footer>Poids estimés par Bambu Studio au lancement de chaque impression, purge comprise. Une impression arrêtée en route ne compte que pour la part faite.<br>
-    BlokBambu ne fait qu'écouter l'imprimante : il ne lui envoie aucune commande.</footer>
+    <span id="pied">BlokBambu ne fait qu'écouter l'imprimante : il ne lui envoie aucune commande.</span></footer>
 </main>
 
 <!-- Fiche d'une bobine -->
@@ -236,8 +319,10 @@ dialog::backdrop{ background:rgba(0,0,0,.7); backdrop-filter:blur(3px); -webkit-
       <div class="champ" id="cCouleur"><span class="etiquette">Couleur</span><div class="choix" id="fCouleurs"></div></div>
       <div class="champ" id="cType"><span class="etiquette">Type de fil</span><div class="choix" id="fTypes"></div></div>
       <div class="champ"><span class="etiquette">Marque</span><div class="choix" id="fMarques"></div>
-        <input class="saisie" id="fMarqueLibre" type="text" maxlength="40" placeholder="Nom de la marque" autocomplete="off"
-               style="margin-top:10px; width:100%" hidden></div>
+        <input class="saisie large" id="fMarqueLibre" type="text" maxlength="40" placeholder="Nom de la marque" autocomplete="off"
+               style="margin-top:10px" hidden></div>
+      <div class="champ"><span class="etiquette">Emplacement</span><div class="choix" id="fPlaces"></div>
+        <div class="aide">Automatique : celui que l'imprimante annonce pour ce fil. Choisissez-le vous-même si elle ne le sait pas.</div></div>
       <div class="champ" id="cPoids"><label for="fPoids">Fil sur la bobine</label>
         <div class="avec-unite"><input class="saisie" id="fPoids" type="number" min="1" max="20000" step="1" value="1000">
           <span class="unite">g</span><div class="choix" id="fPresets"></div></div></div>
@@ -266,7 +351,20 @@ dialog::backdrop{ background:rgba(0,0,0,.7); backdrop-filter:blur(3px); -webkit-
     <div class="f-tete"><span class="f-titre" id="iTitre">Impression</span>
       <button type="button" class="f-fermer" data-fermer aria-label="Fermer">×</button></div>
     <div class="f-corps">
-      <div class="champ"><label for="iPart">Part imprimée</label>
+      <div class="champ" id="cNom"><label for="iNom">Nom</label>
+        <input class="saisie large" id="iNom" type="text" maxlength="80" autocomplete="off" placeholder="Ce qui a été imprimé"></div>
+      <div class="deux" id="cQuand">
+        <div class="champ"><label for="iDate">Date</label><input class="saisie large" id="iDate" type="datetime-local"></div>
+        <div class="champ"><label for="iHeures">Durée</label>
+          <div class="avec-unite"><input class="saisie court" id="iHeures" type="number" min="0" max="700" step="1" placeholder="0">
+            <span class="unite">h</span><input class="saisie court" id="iMinutes" type="number" min="0" max="59" step="1" placeholder="0" aria-label="Minutes">
+            <span class="unite">min</span></div></div>
+      </div>
+      <div class="champ" id="cMachine"><span class="etiquette">Imprimante</span><div class="choix" id="iMachines"></div></div>
+      <div class="champ"><span class="etiquette">Fil utilisé</span><div id="iFils"></div>
+        <button type="button" class="btn petit" id="iPlus">+ Ajouter un fil</button>
+        <div class="aide" id="iFilsAide"></div></div>
+      <div class="champ" id="cPart"><label for="iPart">Part imprimée</label>
         <div class="avec-unite"><input class="saisie" id="iPart" type="number" min="0" max="100" step="1" value="100">
           <span class="unite">%</span><div class="choix" id="iPresets"></div></div>
         <div class="aide">Une impression arrêtée en route ne compte que pour la part faite. À 0 %, elle ne compte plus de fil.</div></div>
@@ -286,13 +384,46 @@ dialog::backdrop{ background:rgba(0,0,0,.7); backdrop-filter:blur(3px); -webkit-
   <div class="f-tete"><span class="f-titre">Réglages</span>
     <button type="button" class="f-fermer" data-fermer aria-label="Fermer">×</button></div>
   <div class="f-corps">
+    <div class="champ" id="cImprimantes"><span class="etiquette">Imprimantes</span>
+      <div id="rImprimantes"></div>
+      <button type="button" class="btn" id="rAjouter">+ Ajouter une imprimante</button>
+      <div class="r-ajout" id="rAjout" hidden>
+        <div class="champ"><label for="rNomImprimante">Nom</label>
+          <input class="saisie large" id="rNomImprimante" type="text" maxlength="24" autocomplete="off" placeholder="A1 de l'atelier"></div>
+        <div class="deux">
+          <div class="champ"><label for="rAdresseImprimante">Adresse IP</label>
+            <input class="saisie large" id="rAdresseImprimante" type="text" maxlength="21" autocomplete="off" spellcheck="false" inputmode="decimal" placeholder="192.168.1.42"></div>
+          <div class="champ"><label for="rCodeImprimante">Code d'accès</label>
+            <input class="saisie large" id="rCodeImprimante" type="text" maxlength="32" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+        </div>
+        <div class="aide" style="margin-top:-4px">Les deux se lisent sur l'écran de l'imprimante : Réglages › WLAN (ou Réseau). Elle doit être allumée, sur le même réseau que cet ordinateur. Le code reste sur cet ordinateur.</div>
+        <div class="f-erreur" id="rErreurAjout"></div>
+        <div class="r-boutons"><button type="button" class="btn" id="rAnnulerAjout">Annuler</button>
+          <button type="button" class="btn jaune" id="rValiderAjout">Ajouter</button></div>
+      </div>
+      <div class="aide">Celles que Bambu Studio connaît sur cet ordinateur sont suivies d'office. Ajoutez les autres avec leur adresse et leur code d'accès.</div>
+    </div>
+    <div class="champ"><label for="rSeuil">Bobine bientôt vide</label>
+      <div class="avec-unite"><span class="unite">en dessous de</span><input class="saisie court" id="rSeuil" type="number" min="0" max="5000" step="10">
+        <span class="unite">g</span></div></div>
+    <div class="champ"><span class="etiquette">Fenêtre à la fin d'une impression</span>
+      <div class="choix"><button type="button" class="puce" data-regle="fin" data-valeur="1">Activée</button><button type="button" class="puce" data-regle="fin" data-valeur="0">Désactivée</button></div>
+      <div class="aide">Elle prévient quand une impression est terminée ou s'est arrêtée.</div></div>
+    <div class="champ" id="cCarte"><span class="etiquette">Poids des impressions lancées ailleurs</span>
+      <div class="choix"><button type="button" class="puce" data-regle="carte" data-valeur="1">Lu sur l'imprimante</button><button type="button" class="puce" data-regle="carte" data-valeur="0">Saisi à la main</button></div>
+      <div class="aide">Une impression lancée du téléphone ou de l'écran de l'imprimante arrive sans son poids. BlokBambu peut le lire dans le fichier d'impression, sur la carte mémoire de l'imprimante, une fois l'impression finie. Il ne fait que lire.</div></div>
     <div class="champ"><span class="etiquette">Voir BlokBambu depuis le téléphone</span>
-      <div class="choix"><button type="button" class="puce" id="rOui">Activé</button><button type="button" class="puce" id="rNon">Désactivé</button></div>
+      <div class="choix"><button type="button" class="puce" data-regle="reseau" data-valeur="1">Activé</button><button type="button" class="puce" data-regle="reseau" data-valeur="0">Désactivé</button></div>
       <div class="aide" id="rAide">Les appareils du même Wi-Fi pourront ouvrir cette page, après avoir saisi un code.</div></div>
     <div class="acces" id="rAcces" hidden>
       <div><span>Adresse à ouvrir sur le téléphone</span><b id="rAdresse"></b></div>
       <div><span>Code à saisir</span><b id="rCode"></b></div>
     </div>
+    <div class="champ"><span class="etiquette">Partager BlokBambu</span>
+      <div class="avec-unite"><button type="button" class="btn jaune" id="rPartager">Copier le lien</button></div>
+      <span class="lien" id="rLien" style="margin-top:10px"></span>
+      <div class="aide">La page du projet : vos amis y trouvent la ligne à coller pour l'installer, sur Mac, Windows ou Linux.</div></div>
+    <div class="r-version" id="rVersion"></div>
   </div>
   <div class="f-erreur" id="rErreur"></div>
   <div class="f-pied"><span class="espace"></span><button type="button" class="btn jaune" data-fermer>Fermer</button></div>
@@ -303,7 +434,7 @@ dialog::backdrop{ background:rgba(0,0,0,.7); backdrop-filter:blur(3px); -webkit-
 var MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 var PRESETS = [1000, 750, 500, 250];
 var PARTS = [100, 75, 50, 25, 0];
-var etat = null, brut = "", fiche = null, impression = null;
+var etat = null, brut = "", fiche = null, impression = null, filtre = "", imprimantesVues = "";
 
 function $(id) { return document.getElementById(id); }
 function e(t) { return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) {
@@ -323,6 +454,11 @@ function heure(iso) { var d = new Date(iso), m = d.getMinutes(); return d.getHou
 function pastille(c) { return '<span class="pastille" style="--c:' + e(c) + '"></span>'; }
 function pluriel(n, mot) { return n + " " + mot + (n > 1 ? "s" : ""); }
 function majuscule(t) { return t.charAt(0).toUpperCase() + t.slice(1); }
+function machine(id) { for (var i = 0; i < etat.machines.length; i++) if (etat.machines[i].id === id) return etat.machines[i].nom; return ""; }
+function memoire(cle, valeur) {  // un confort de cette page sur cet appareil ; elle marche sans
+  try { if (valeur === undefined) return localStorage.getItem(cle); localStorage.setItem(cle, valeur); } catch (x) {}
+  return null;
+}
 
 function ecrire(id, texte) {
   var el = $(id);
@@ -332,23 +468,51 @@ function ecrire(id, texte) {
   if (!premier) { el.classList.remove("bumped"); void el.offsetWidth; el.classList.add("bumped"); }
 }
 
+function copier(texte, bouton) {
+  function fait() {
+    var avant = bouton.textContent;
+    bouton.style.minWidth = bouton.offsetWidth + "px";
+    bouton.textContent = "Copié";
+    setTimeout(function () { bouton.textContent = avant; }, 1600);
+  }
+  function secours() {
+    var zone = document.createElement("textarea");
+    zone.value = texte; zone.style.position = "fixed"; zone.style.opacity = "0";
+    (bouton.closest("dialog") || document.body).appendChild(zone);
+    zone.select();
+    try { if (document.execCommand("copy")) fait(); } catch (x) {}
+    zone.remove();
+  }
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(texte).then(fait, secours);
+  else secours();
+}
+
 function rendre() {
   var s = etat, r = s.resume, h;
+  var plusieurs = s.machines.length > 1;
 
-  // Imprimantes
+  // Imprimantes : la pastille de l'en-tête
   var liste = s.imprimantes, reliees = liste.filter(function (i) { return i.etat === "connectee"; }).length;
   var p = $("imprimante"), texte;
   if (!liste.length) texte = "Imprimante<span class=\"texte-long\"> non suivie</span>";
-  else if (liste.length === 1) texte = "Imprimante<span class=\"texte-long\"> " + e(liste[0].court) + "</span>";
+  else if (liste.length === 1) texte = e(liste[0].nom) + "<span class=\"texte-long\"> " + e(liste[0].court) + "</span>";
   else texte = reliees + " sur " + liste.length + "<span class=\"texte-long\"> imprimantes connectées</span>";
   p.classList.toggle("on", liste.length > 0 && reliees === liste.length);
   p.title = liste.length ? liste.map(function (i) { return (liste.length > 1 ? i.nom + " : " : "") + i.texte; }).join("\n")
-    : "Bambu Studio n'a pas de code d'accès pour une imprimante : pas d'alerte de bobine.";
+    : "Aucune imprimante suivie : pas d'alerte de bobine. Ajoutez-la dans les réglages.";
   $("imprimanteTexte").innerHTML = texte;
   $("reglages").hidden = !s.local;
 
   // Ce qui demande l'attention
   h = "";
+  if (s.maj && memoire("maj") !== String(s.maj.version)) {
+    h += '<div class="maj"><div><strong>La version ' + e(s.maj.version) + " de BlokBambu est parue.</strong>" +
+      (s.maj.quoi ? "<small>" + e(s.maj.quoi) + "</small>" : "") +
+      "<small>Pour l'installer, collez cette ligne dans " + e(s.maj.ou) + (s.local ? " de cet ordinateur" : " de l'ordinateur où BlokBambu tourne") +
+      ". Vos données sont gardées.</small><code>" + e(s.maj.commande) + "</code></div>" +
+      '<button class="btn jaune" data-copier="' + e(s.maj.commande) + '">Copier la ligne</button>' +
+      '<button class="f-fermer" data-maj="' + e(s.maj.version) + '" title="Plus tard" aria-label="Plus tard">×</button></div>';
+  }
   liste.forEach(function (i) { if (i.alerte) h += '<div class="alerte">' + e((liste.length > 1 ? i.nom + " : " : "") + i.texte) + "</div>"; });
   s.alertes.forEach(function (a) {
     var lignes = a.texte.split("\n");
@@ -365,42 +529,81 @@ function rendre() {
   ecrire("kFil", poids(r.mois.g));
   $("sFil").textContent = r.depuis ? poids(r.g) + " depuis le " + jour(r.depuis, true) : "aucune impression pour l'instant";
   ecrire("kImpressions", String(r.mois.impressions));
-  $("sImpressions").textContent = "en " + r.mois.nom + " · " + r.impressions + " au total";
+  $("sImpressions").textContent = "en " + r.mois.nom + (r.mois.secondes ? " · " + duree(r.mois.secondes) : "") + " · " + r.impressions + " au total";
   ecrire("kCout", r.mois.cout == null ? "—" : euros(r.mois.cout));
   $("sCout").textContent = r.cout == null ? "indiquez le prix de vos bobines" : "en " + r.mois.nom + " · " + euros(r.cout) + " au total";
-  ecrire("kReste", s.bobines.length ? poids(r.reste) : "—");
-  $("sReste").textContent = s.bobines.length ? pluriel(s.bobines.length, "bobine") + (s.bobines.length > 1 ? " suivies" : " suivie") : "aucune bobine suivie";
+  var suiviesIci = s.bobines.length;
+  ecrire("kReste", suiviesIci ? poids(r.reste) : "—");
+  $("sReste").textContent = suiviesIci ? pluriel(suiviesIci, "bobine") + (suiviesIci > 1 ? " suivies" : " suivie") : "aucune bobine suivie";
 
-  // Bobines
+  // Imprimantes : ce que chacune fait, ce qu'elle porte, ce qu'elle a imprimé
   h = "";
-  s.bobines.forEach(function (b) {
-    var detail = [b.marque, b.type].filter(Boolean).join(" · ");
+  liste.forEach(function (i) {
+    var t = i.impression, m = i.mois, total = i.total;
+    var places = i.emplacements.map(function (pl) {
+      return pl.couleur
+        ? '<span class="i-place" title="' + e([pl.teinte, pl.marque, pl.type].filter(Boolean).join(" · ")) + '"><b>' + e(pl.nom) + "</b>" + pastille(pl.couleur) + e(pl.teinte) + "</span>"
+        : '<span class="i-place sans"><b>' + e(pl.nom) + "</b>vide</span>";
+    }).join("");
+    h += '<div class="imprimante"><div class="i-haut"><span class="i-nom">' + e(i.nom) + "</span>" +
+      '<span class="i-etat' + (i.etat === "connectee" ? " on" : i.alerte ? " alerte" : "") + '" title="' + e(i.texte) + '"><span class="dot"></span>' + e(majuscule(i.court)) + "</span></div>" +
+      (t ? '<div class="i-tache"><b>' + e(t.projet) + '</b><span class="mot">' + (t.pause ? "en pause à " : "en cours, ") + t.percent + " %</span>" +
+           '<div class="jauge"><i style="width:' + t.percent + '%"></i></div></div>'
+         : i.repos ? '<div class="i-tache"><span>Au repos</span></div>' : "") +
+      (places ? '<div class="i-places">' + places + "</div>" : "") +
+      (plusieurs ? '<div class="i-chiffres">' +
+        '<div><div class="n">' + poids(m.g) + '</div><div class="l">en ' + e(r.mois.nom) + "</div></div>" +
+        '<div><div class="n">' + m.impressions + '</div><div class="l">' + (m.impressions > 1 ? "impressions" : "impression") + "</div></div>" +
+        '<div><div class="n">' + (m.secondes ? duree(m.secondes) : "—") + '</div><div class="l">temps</div></div>' +
+        '<div><div class="n">' + (m.cout == null ? "—" : euros(m.cout)) + '</div><div class="l">coût</div></div></div>' +
+        '<div class="i-total">Au total : ' + [poids(total.g), pluriel(total.impressions, "impression"), total.secondes ? duree(total.secondes) : "",
+          total.cout == null ? "" : euros(total.cout)].filter(Boolean).join(" · ") + "</div>" : "") +
+      "</div>";
+  });
+  $("zoneImprimantes").hidden = !liste.length;
+  $("tImprimantes").textContent = liste.length > 1 ? "Imprimantes" : "Imprimante";
+  $("gerer").hidden = !s.local;
+  $("imprimantes").innerHTML = h ? '<div class="imprimantes">' + h + "</div>" : "";
+  $("pied").textContent = s.lecture_carte
+    ? "BlokBambu écoute l'imprimante et lit, sur sa carte mémoire, le fichier des impressions lancées ailleurs. Il ne lui envoie aucune commande."
+    : "BlokBambu ne fait qu'écouter l'imprimante : il ne lui envoie aucune commande.";
+
+  // Bobines, dans l'ordre des emplacements : A1, A2… puis celles qui ne sont pas sur l'imprimante
+  var cartes = s.bobines.map(function (b) { return { b: b, libre: false }; })
+    .concat(s.a_suivre.map(function (b) { return { b: b, libre: true }; }));
+  cartes.sort(function (x, y) { return x.b.rang - y.b.rang; });
+  h = "";
+  cartes.forEach(function (c) {
+    var b = c.b, ref = b.id ? "id:" + b.id : "cle:" + b.cle;
+    var detail = [b.marque, b.type].filter(Boolean).concat(b.imprimantes.length ? ["sur " + b.imprimantes.join(", ")] : []).join(" · ");
+    var place = b.emplacements.length
+      ? '<button class="b-place' + (b.absente ? " absente" : "") + '" data-fiche="' + e(ref) + '" data-mode="' + (b.id ? "modifier" : "suivre") + '" title="' +
+        (b.absente ? "L'imprimante ne voit pas de fil à cet emplacement. " : "") + 'Changer d\'emplacement">' + e(b.emplacements.join(" ")) + "</button>"
+      : b.id ? '<button class="b-place aucune" data-fiche="' + e(ref) + '" data-mode="modifier" title="Indiquer son emplacement">—</button>' : "";
+    var haut = '<div class="b-haut">' + pastille(b.couleur) + '<span class="b-nom">' + e(b.nom) + "</span>" + place + "</div>";
+    if (c.libre) {
+      h += '<div class="bobine libre" style="--c:' + e(b.couleur) + '">' + haut +
+        '<div class="b-detail">' + e(detail) + "</div>" +
+        '<div class="b-reste"><div class="n" style="color:var(--muted)">—</div><div class="l">' +
+        (b.emplacements.length ? "Sur l'imprimante, pas suivie" : "Imprimée, pas suivie") + "</div></div>" +
+        '<div class="jauge"><i style="width:0"></i></div>' +
+        '<div class="b-actions"><button class="btn jaune" data-fiche="' + e(ref) + '" data-mode="suivre">Suivre cette bobine</button></div></div>';
+      return;
+    }
     var plus = [];
     if (b.reserve != null) plus.push(b.reserve === 0 ? '<span class="' + (b.bas ? "alerte-mot" : "") + '">plus de réserve</span>' : pluriel(b.reserve, "bobine") + " en réserve");
     if (b.prix) plus.push(euros(b.prix) + " le kilo");
     var etiquette = b.reste <= 0 ? "Vide" : b.bas ? "Bientôt vide" : "Restants";
     etiquette += b.source === "puce" ? " · lu sur la puce" : b.depuis ? " · posée le " + jour(b.depuis, false) : "";
-    h += '<div class="bobine' + (b.bas ? " bas" : "") + '" style="--c:' + e(b.couleur) + '">' +
-      '<div class="b-haut">' + pastille(b.couleur) + '<span class="b-nom">' + e(b.nom) + "</span>" +
-      (b.emplacements.length ? '<span class="b-place">' + e(b.emplacements.join(" ")) + "</span>" : "") + "</div>" +
+    h += '<div class="bobine' + (b.bas ? " bas" : "") + '" style="--c:' + e(b.couleur) + '">' + haut +
       '<div class="b-detail">' + e(detail || "Marque non renseignée") + "</div>" +
       '<div class="b-reste"><div class="n">' + poids(Math.max(b.reste, 0)) + '</div><div class="l">' + etiquette + "</div></div>" +
       '<div class="jauge"><i style="width:' + (100 * b.part).toFixed(1) + '%"></i></div>' +
       (plus.length ? '<div class="b-plus">' + plus.join(" · ") + "</div>" : "") +
       '<div class="b-actions">' + (b.suivie
-        ? '<button class="btn" data-fiche="' + e(b.cle) + '" data-mode="nouvelle">Nouvelle bobine</button>' +
-          '<button class="btn" data-fiche="' + e(b.cle) + '" data-mode="modifier">Modifier</button>'
-        : '<button class="btn" data-fiche="' + e(b.cle) + '" data-mode="suivre">Prix et réserve</button>') + "</div></div>";
-  });
-  s.a_suivre.forEach(function (b) {
-    h += '<div class="bobine libre" style="--c:' + e(b.couleur) + '">' +
-      '<div class="b-haut">' + pastille(b.couleur) + '<span class="b-nom">' + e(b.nom) + "</span>" +
-      (b.emplacements.length ? '<span class="b-place">' + e(b.emplacements.join(" ")) + "</span>" : "") + "</div>" +
-      '<div class="b-detail">' + e([b.marque, b.type].filter(Boolean).join(" · ")) + "</div>" +
-      '<div class="b-reste"><div class="n" style="color:var(--muted)">—</div><div class="l">' +
-      (b.emplacements.length ? "Sur l'imprimante, pas suivie" : "Imprimée, pas suivie") + "</div></div>" +
-      '<div class="jauge"><i style="width:0"></i></div>' +
-      '<div class="b-actions"><button class="btn jaune" data-fiche="' + e(b.cle) + '" data-mode="suivre">Suivre cette bobine</button></div></div>';
+        ? '<button class="btn" data-fiche="' + e(ref) + '" data-mode="nouvelle">Nouvelle bobine</button>' +
+          '<button class="btn" data-fiche="' + e(ref) + '" data-mode="modifier">Modifier</button>'
+        : '<button class="btn" data-fiche="' + e(ref) + '" data-mode="suivre">Prix et réserve</button>') + "</div></div>";
   });
   $("bobines").innerHTML = h ? '<div class="bobines">' + h + "</div>" :
     '<div class="vide">Aucune bobine suivie.<br>Ajoutez celles que vous utilisez : chaque impression s\'en déduira.</div>';
@@ -422,25 +625,36 @@ function rendre() {
   h = "";
   maxi = Math.max.apply(null, s.mois.map(function (m) { return m.g; }).concat([1]));
   s.mois.forEach(function (m) {
-    h += '<div class="ligne"><div class="l-nom couleur-nom"><b>' + e(majuscule(m.nom)) + "</b><span>" + pluriel(m.impressions, "impression") + "</span></div>" +
+    h += '<div class="ligne"><div class="l-nom couleur-nom"><b>' + e(majuscule(m.nom)) + "</b><span>" +
+      [pluriel(m.impressions, "impression"), m.secondes ? duree(m.secondes) : ""].filter(Boolean).join(" · ") + "</span></div>" +
       '<div class="l-barre"><i style="width:' + Math.max(100 * m.g / maxi, 1).toFixed(1) + '%"></i></div>' +
       '<div class="l-note">' + (m.cout == null ? "" : euros(m.cout)) + "</div>" +
       '<div class="l-chiffre">' + poids(m.g) + "</div></div>";
   });
   $("mois").innerHTML = h ? '<div class="table">' + h + "</div>" : '<div class="vide">Les totaux de chaque mois apparaîtront ici.</div>';
 
-  // Impressions
+  // Impressions, pour toutes les imprimantes ou pour une seule
+  if (filtre && !machine(filtre)) filtre = "";
+  $("filtres").hidden = !plusieurs;
+  $("filtres").innerHTML = plusieurs ? [{ id: "", nom: "Toutes" }].concat(s.machines).map(function (m) {
+    return '<button class="puce' + (m.id === filtre ? " active" : "") + '" data-filtre="' + e(m.id) + '">' + e(m.nom) + "</button>"; }).join("") : "";
   h = "";
   s.impressions.forEach(function (i) {
-    var notes = [jour(i.date, true) + " à " + heure(i.date), duree(i.secondes)];
+    if (filtre && i.imprimante !== filtre) return;
+    var notes = [jour(i.date, true) + " à " + heure(i.date)];
+    if (i.secondes) notes.push(duree(i.secondes));
+    if (plusieurs && i.imprimante) notes.push(e(machine(i.imprimante)));
     if (i.en_cours != null) notes.push('<span class="mot">en cours, ' + i.en_cours + " %</span>");
     else if (i.part < 1) notes.push('<span class="mot">arrêtée à ' + Math.round(i.part * 100) + " %</span>");
+    if (i.a_completer) notes.push('<span class="mot">fil à indiquer</span>');
     if (i.cout != null) notes.push(euros(i.cout));
     h += '<div class="ligne impression"><div class="l-nom"><b>' + e(i.projet) + "</b><span>" + notes.join(" · ") + "</span></div>" +
-      '<div class="fils">' + i.fils.map(function (f) { return '<span class="fil">' + pastille(f.couleur) + poids(f.g) + "</span>"; }).join("") + "</div>" +
-      '<button class="btn petit" data-impression="' + e(i.id) + '">Modifier</button></div>';
+      '<div class="fils">' + i.fils.map(function (f) { return '<span class="fil">' + pastille(f.couleur) + (f.pese ? poids(f.g) : "—") + "</span>"; }).join("") + "</div>" +
+      (i.a_completer ? '<button class="btn petit jaune" data-impression="' + e(i.id) + '">Compléter</button>'
+                     : '<button class="btn petit" data-impression="' + e(i.id) + '">Modifier</button>') + "</div>";
   });
-  $("impressions").innerHTML = h ? '<div class="table">' + h + "</div>" : '<div class="vide">Aucune impression comptée pour l\'instant.</div>';
+  $("impressions").innerHTML = h ? '<div class="table">' + h + "</div>" :
+    '<div class="vide">' + (filtre ? "Aucune impression comptée pour cette imprimante." : "Aucune impression comptée pour l'instant.") + "</div>";
 
   if ($("ficheReglages").open) dessinerReglages();
 }
@@ -458,30 +672,36 @@ function charger() {
   });
 }
 
+// Rend la réponse du compteur ; un refus porte parfois son explication.
 function envoyer(chemin, champs) {
   return fetch(chemin, { method: "POST", body: new URLSearchParams(champs) }).then(function (r) {
-    if (!r.ok) throw new Error("refus");
-    return charger();
+    return r.json().catch(function () { return {}; }).then(function (reponse) {
+      if (!r.ok) throw new Error(reponse.erreur || "");
+      return charger().then(function () { return reponse; });
+    });
   });
 }
 
 // ---------------------------------------------------------------- fiche d'une bobine
 
-function trouver(cle) {
+function trouver(ref) {
+  var genre = ref.slice(0, ref.indexOf(":")), valeur = ref.slice(ref.indexOf(":") + 1);
   var toutes = etat.bobines.concat(etat.a_suivre);
-  for (var i = 0; i < toutes.length; i++) if (toutes[i].cle === cle) return toutes[i];
+  for (var i = 0; i < toutes.length; i++) {
+    if (genre === "id" ? toutes[i].id === valeur : !toutes[i].id && toutes[i].cle === valeur) return toutes[i];
+  }
   return null;
 }
 
-function ouvrir(cle, mode) {
-  var b = cle ? trouver(cle) : null;
-  fiche = { mode: b ? mode : "ajouter", couleur: b ? b.couleur : null, type: b ? b.type : "PLA",
-            marque: b ? b.marque || "" : "", nouvelleMarque: false };
+function ouvrir(ref, mode) {
+  var b = ref ? trouver(ref) : null;
+  fiche = { mode: b ? mode : "ajouter", id: b && b.id || "", couleur: b ? b.couleur : null, type: b ? b.type : "PLA",
+            marque: b ? b.marque || "" : "", nouvelleMarque: false, place: b && b.emplacement || "",
+            auto: b && !b.emplacement ? b.emplacements.join(" ") : "" };
   $("fTitre").textContent = { ajouter: "Ajouter une bobine", suivre: "Suivre cette bobine", nouvelle: "Nouvelle bobine", modifier: "Modifier la bobine" }[fiche.mode];
   $("cFixe").hidden = !b; $("cCouleur").hidden = !!b; $("cType").hidden = !!b;
   $("cPoids").hidden = fiche.mode === "modifier";
-  if (b) $("fFixe").innerHTML = pastille(b.couleur) + e(b.nom) + " <small>" + e(b.type) +
-    (b.emplacements.length ? " · emplacement " + e(b.emplacements.join(", ")) : "") + "</small>";
+  if (b) $("fFixe").innerHTML = pastille(b.couleur) + e(b.nom) + " <small>" + e(b.type) + "</small>";
   $("fRetirer").hidden = !(b && b.suivie);
   $("fPoids").value = b && fiche.mode === "suivre" && b.source === "puce" ? Math.round(b.poids) : 1000;
   $("fPrix").value = b && b.prix ? b.prix : "";
@@ -499,12 +719,14 @@ function ouvrir(cle, mode) {
 }
 
 function dessinerFiche() {
-  var f = fiche, h = "";
+  var f = fiche, h = "", vues = {};
   etat.couleurs.forEach(function (c) {
+    if (vues[c.couleur]) return;  // une couleur déjà proposée : son type se choisit en dessous
+    vues[c.couleur] = 1;
     h += '<button type="button" class="teinte' + (c.couleur === f.couleur ? " active" : "") + '" style="--c:' + e(c.couleur) +
       '" data-couleur="' + e(c.couleur) + '" data-type="' + e(c.type) + '" title="' + e(c.nom + " " + c.couleur) + '" aria-label="' + e(c.nom) + '"></button>';
   });
-  var libre = f.couleur && !etat.couleurs.some(function (c) { return c.couleur === f.couleur; });
+  var libre = f.couleur && !vues[f.couleur];
   h += '<label class="teinte-libre' + (libre ? " active" : "") + '" title="Autre couleur"' +
     (libre ? ' style="background:' + e(f.couleur) + '; border-style:solid; box-shadow:0 0 0 2px var(--yellow)"' : "") + ">" +
     (libre ? "" : "+") + '<input type="color" id="fCouleurLibre" value="' + e(f.couleur || "#ffb400") + '" aria-label="Autre couleur"></label>';
@@ -517,6 +739,14 @@ function dessinerFiche() {
     return '<button type="button" class="puce' + (!f.nouvelleMarque && m === f.marque ? " active" : "") + '" data-marque="' + e(m) + '">' + e(m) + "</button>"; }).join("") +
     '<button type="button" class="puce plus' + (f.nouvelleMarque ? " active" : "") + '" data-marque-nouvelle="1">+ Nouvelle marque</button>';
   $("fMarqueLibre").hidden = !f.nouvelleMarque;
+  // Emplacements : « automatique », puis ceux de chaque imprimante
+  h = '<button type="button" class="puce' + (!f.place ? " active" : "") + '" data-place="">Automatique' + (!f.place && f.auto ? " · " + e(f.auto) : "") + "</button>";
+  var groupe = null;
+  etat.emplacements.forEach(function (pl) {
+    if (pl.imprimante && pl.imprimante !== groupe) { groupe = pl.imprimante; h += '<span class="groupe">' + e(groupe) + "</span>"; }
+    h += '<button type="button" class="puce' + (pl.id === f.place ? " active" : "") + '" data-place="' + e(pl.id) + '">' + e(pl.nom) + "</button>";
+  });
+  $("fPlaces").innerHTML = h;
   presets("fPresets", PRESETS, Number($("fPoids").value), poids);
 }
 
@@ -532,6 +762,7 @@ $("fiche").addEventListener("click", function (ev) {
   else if (c.dataset.type && c.classList.contains("puce")) { fiche.type = c.dataset.type; dessinerFiche(); }
   else if (c.dataset.marque) { fiche.marque = fiche.marque === c.dataset.marque && !fiche.nouvelleMarque ? "" : c.dataset.marque; fiche.nouvelleMarque = false; dessinerFiche(); }
   else if (c.dataset.marqueNouvelle) { fiche.nouvelleMarque = !fiche.nouvelleMarque; dessinerFiche(); if (fiche.nouvelleMarque) $("fMarqueLibre").focus(); }
+  else if (c.dataset.place !== undefined) { fiche.place = c.dataset.place; dessinerFiche(); }
   else if (c.dataset.valeur) { $("fPoids").value = c.dataset.valeur; dessinerFiche(); }
 });
 $("fiche").addEventListener("input", function (ev) {
@@ -540,7 +771,7 @@ $("fiche").addEventListener("input", function (ev) {
 });
 $("fiche").addEventListener("change", function (ev) { if (ev.target.id === "fCouleurLibre") dessinerFiche(); });
 $("fRetirer").addEventListener("click", function () {
-  envoyer("/retirer", { couleur: fiche.couleur, type: fiche.type }).then(function () { $("fiche").close(); })
+  envoyer("/retirer", { id: fiche.id }).then(function () { $("fiche").close(); })
     .catch(function () { $("fErreur").textContent = "BlokBambu n'a pas pu enregistrer."; });
 });
 $("formulaire").addEventListener("submit", function (ev) {
@@ -550,8 +781,10 @@ $("formulaire").addEventListener("submit", function (ev) {
   if (!fiche.couleur) { $("fErreur").textContent = "Choisissez une couleur."; return; }
   if (fiche.nouvelleMarque && !marque) { $("fErreur").textContent = "Écrivez le nom de la marque."; $("fMarqueLibre").focus(); return; }
   if (fiche.mode !== "modifier" && !(grammes > 0)) { $("fErreur").textContent = "Indiquez le poids de fil sur la bobine."; return; }
-  var champs = { couleur: fiche.couleur, type: fiche.type, marque: marque, prix: $("fPrix").value, reserve: $("fReserve").value };
-  if (fiche.mode !== "modifier") champs.poids = String(grammes);
+  var champs = { marque: marque, prix: $("fPrix").value, reserve: $("fReserve").value, emplacement: fiche.place };
+  if (fiche.mode === "modifier") champs.id = fiche.id;
+  else { champs.couleur = fiche.couleur; champs.type = fiche.type; champs.poids = String(grammes); }
+  if (fiche.mode === "nouvelle") champs.remplace = fiche.id;
   envoyer(fiche.mode === "modifier" ? "/bobine/modifier" : "/bobine", champs)
     .then(function () { $("fiche").close(); })
     .catch(function () { $("fErreur").textContent = "BlokBambu n'a pas pu enregistrer : vérifiez le prix et la réserve."; });
@@ -559,21 +792,82 @@ $("formulaire").addEventListener("submit", function (ev) {
 
 // ---------------------------------------------------------------- fiche d'une impression
 
+// Une impression lue dans un fichier de Bambu Studio garde ses grammes : on n'y choisit que la bobine.
+// Celles qu'on ajoute à la main ou qui ont été lancées ailleurs se saisissent en entier.
 function ouvrirImpression(id) {
-  impression = null;
-  etat.impressions.forEach(function (i) { if (i.id === id) impression = i; });
-  if (!impression) return;
-  $("iTitre").textContent = impression.projet;
-  $("iPart").value = Math.round(impression.part * 100);
+  var i = null;
+  if (id) { etat.impressions.forEach(function (x) { if (x.id === id) i = x; }); if (!i) return; }
+  var fils = i ? i.fils.map(function (f) { return { choix: f.bobine ? "b:" + f.bobine : "c:" + f.couleur + "|" + f.type, nom: f.nom, g: f.pese || "" }; }) : [];
+  impression = { id: id || "", libre: !i || i.source !== "studio", machine: i ? i.imprimante : (etat.imprimantes.length === 1 ? etat.imprimantes[0].id : ""), fils: fils };
+  if (impression.libre && !fils.length) fils.push({ choix: premierChoix(), g: "" });
+  $("iTitre").textContent = i ? i.projet : "Ajouter une impression";
+  $("cNom").hidden = $("cQuand").hidden = !!i;
+  $("cPart").hidden = $("iSupprimer").hidden = !i;
+  $("iNom").value = ""; $("iHeures").value = ""; $("iMinutes").value = "";
+  var maintenant = new Date();
+  $("iDate").value = new Date(maintenant - maintenant.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  $("iPart").value = i ? Math.round(i.part * 100) : 100;
   $("iErreur").textContent = "";
+  $("iPlus").hidden = !impression.libre;
+  $("iFilsAide").textContent = !impression.libre ? "Les grammes viennent de Bambu Studio. Choisissez la bobine si ce n'est pas la bonne."
+    : i && i.a_completer ? "Cette impression n'a pas été lancée depuis Bambu Studio sur cet ordinateur : indiquez le fil qu'elle a utilisé."
+    : "";
   presets("iPresets", PARTS, Number($("iPart").value), function (v) { return v + " %"; });
+  dessinerImpression();
   $("ficheImpression").showModal();
+  if (!i) $("iNom").focus();
 }
+
+function premierChoix() {
+  for (var i = 0; i < etat.bobines.length; i++) if (etat.bobines[i].id) return "b:" + etat.bobines[i].id;
+  var autre = etat.a_suivre[0] || etat.couleurs[0];
+  return autre ? "c:" + autre.cle : "c:#FFFFFF|PLA";
+}
+
+function optionsFil(fil) {
+  var vues = {}, h = "";
+  function option(valeur, texte) {
+    if (vues[valeur]) return;
+    vues[valeur] = 1;
+    h += '<option value="' + e(valeur) + '"' + (valeur === fil.choix ? " selected" : "") + ">" + e(texte) + "</option>";
+  }
+  etat.bobines.forEach(function (b) {
+    if (b.id) option("b:" + b.id, [b.nom, b.marque, b.type].filter(Boolean).join(" · ") + (b.emplacements.length ? " — " + b.emplacements.join(" ") : ""));
+  });
+  if (fil.choix.indexOf("c:") === 0) option(fil.choix, (fil.nom || fil.choix.slice(2, 9)) + " · " + fil.choix.split("|")[1] + " — sans bobine suivie");
+  if (impression.libre) etat.a_suivre.concat(etat.couleurs).forEach(function (c) { option("c:" + c.cle, c.nom + " · " + c.type + " — sans bobine suivie"); });
+  return h;
+}
+
+function dessinerImpression() {
+  var h = "";
+  impression.fils.forEach(function (f, rang) {
+    h += '<div class="fil-ligne"><select class="saisie" data-rang="' + rang + '" aria-label="Bobine">' + optionsFil(f) + "</select>" +
+      (impression.libre
+        ? '<input class="saisie" type="number" min="0" max="20000" step="0.01" placeholder="0" value="' + e(f.g) + '" data-rang="' + rang + '" aria-label="Grammes"><span class="unite">g</span>' +
+          (impression.fils.length > 1 ? '<button type="button" class="f-fermer" data-oter="' + rang + '" aria-label="Retirer ce fil">×</button>' : "")
+        : '<span class="pese">' + poids(Number(f.g) || 0) + "</span>") + "</div>";
+  });
+  $("iFils").innerHTML = h;
+  var machines = etat.machines;
+  $("cMachine").hidden = machines.length < 2;
+  $("iMachines").innerHTML = machines.map(function (m) {
+    return '<button type="button" class="puce' + (m.id === impression.machine ? " active" : "") + '" data-machine="' + e(m.id) + '">' + e(m.nom) + "</button>"; }).join("");
+}
+
 $("ficheImpression").addEventListener("click", function (ev) {
   var c = ev.target.closest("button");
-  if (c && c.dataset.valeur) { $("iPart").value = c.dataset.valeur; presets("iPresets", PARTS, Number(c.dataset.valeur), function (v) { return v + " %"; }); }
+  if (!c) return;
+  if (c.dataset.valeur) { $("iPart").value = c.dataset.valeur; presets("iPresets", PARTS, Number(c.dataset.valeur), function (v) { return v + " %"; }); }
+  else if (c.dataset.machine) { impression.machine = c.dataset.machine; dessinerImpression(); }
+  else if (c.dataset.oter) { impression.fils.splice(Number(c.dataset.oter), 1); dessinerImpression(); }
+  else if (c.id === "iPlus") { impression.fils.push({ choix: premierChoix(), g: "" }); dessinerImpression(); }
 });
-$("iPart").addEventListener("input", function () { presets("iPresets", PARTS, Number($("iPart").value), function (v) { return v + " %"; }); });
+$("ficheImpression").addEventListener("input", function (ev) {
+  var c = ev.target;
+  if (c.id === "iPart") presets("iPresets", PARTS, Number(c.value), function (v) { return v + " %"; });
+  else if (c.dataset.rang !== undefined) impression.fils[Number(c.dataset.rang)][c.tagName === "SELECT" ? "choix" : "g"] = c.value;
+});
 $("iSupprimer").addEventListener("click", function () {
   envoyer("/impression/supprimer", { id: impression.id }).then(function () { $("ficheImpression").close(); })
     .catch(function () { $("iErreur").textContent = "BlokBambu n'a pas pu enregistrer."; });
@@ -582,43 +876,133 @@ $("formulaireImpression").addEventListener("submit", function (ev) {
   ev.preventDefault();
   var p = Number($("iPart").value);
   if (!(p >= 0 && p <= 100) || $("iPart").value === "") { $("iErreur").textContent = "Indiquez une part entre 0 et 100 %."; return; }
-  envoyer("/impression", { id: impression.id, part: String(p) }).then(function () { $("ficheImpression").close(); })
-    .catch(function () { $("iErreur").textContent = "BlokBambu n'a pas pu enregistrer."; });
+  var fils = impression.fils.map(function (f) {
+    var g = Number(String(f.g).replace(",", ".")) || 0;
+    if (f.choix.indexOf("b:") === 0) return { bobine: f.choix.slice(2), g: g };
+    return { couleur: f.choix.slice(2, 9), type: f.choix.split("|")[1], g: g };
+  });
+  var champs = { fils: JSON.stringify(fils), imprimante: impression.machine || "" }, chemin = "/impression";
+  if (impression.id) { champs.id = impression.id; champs.part = String(p); }
+  else {
+    chemin = "/impression/ajouter";
+    champs.projet = $("iNom").value.trim();
+    champs.date = $("iDate").value;
+    champs.minutes = String((Number($("iHeures").value) || 0) * 60 + (Number($("iMinutes").value) || 0));
+    if (!champs.projet) { $("iErreur").textContent = "Donnez un nom à cette impression."; $("iNom").focus(); return; }
+    if (!champs.date) { $("iErreur").textContent = "Indiquez la date de l'impression."; return; }
+    if (!fils.some(function (f) { return f.g > 0; })) { $("iErreur").textContent = "Indiquez les grammes de fil utilisés."; return; }
+  }
+  envoyer(chemin, champs).then(function () { $("ficheImpression").close(); })
+    .catch(function () { $("iErreur").textContent = "BlokBambu n'a pas pu enregistrer : vérifiez la date et les grammes."; });
 });
 
 // ---------------------------------------------------------------- réglages
 
 function dessinerReglages() {
   var r = etat.reglages || {};
-  $("rOui").classList.toggle("active", !!r.reseau);
-  $("rNon").classList.toggle("active", !r.reseau);
+  // Imprimantes : la liste n'est redessinée que si elle a changé, et jamais pendant qu'on y écrit.
+  var dedans = $("rImprimantes"), nouvelles = JSON.stringify(r.imprimantes);
+  $("cImprimantes").hidden = $("cCarte").hidden = !r.imprimantes;
+  if (r.imprimantes && nouvelles !== imprimantesVues && !dedans.contains(document.activeElement)) {
+    imprimantesVues = nouvelles;
+    dedans.innerHTML = r.imprimantes.length ? '<div class="r-liste">' + r.imprimantes.map(function (i) {
+      var note = i.adresse ? "Ajoutée à la main · " + e(i.adresse) : "Trouvée dans Bambu Studio";
+      if (!i.suivie) return '<div class="r-imprimante"><div class="r-ligne"><span class="r-nom">' + e(i.nom || i.defaut) + "</span>" +
+        '<button type="button" class="btn petit" data-suivre="' + e(i.id) + '">Suivre de nouveau</button></div>' +
+        '<div class="r-note">' + note + " · plus suivie</div></div>";
+      return '<div class="r-imprimante"><div class="r-ligne">' +
+        '<input class="saisie" type="text" maxlength="24" autocomplete="off" value="' + e(i.nom) + '" placeholder="' + e(i.defaut) + '" data-nom="' + e(i.id) + '" aria-label="Nom de l\'imprimante">' +
+        '<button type="button" class="btn petit danger" data-retirer="' + e(i.id) + '">Retirer</button></div>' +
+        '<div class="r-note">' + note + (i.etat ? " · " + e(i.etat) : "") + "</div></div>";
+    }).join("") + "</div>" : '<div class="aide" style="margin:0 0 10px">Aucune imprimante suivie pour l\'instant.</div>';
+  }
+  if (document.activeElement !== $("rSeuil")) $("rSeuil").value = r.seuil;
+  document.querySelectorAll("#ficheReglages [data-regle]").forEach(function (b) {
+    b.classList.toggle("active", !!r[b.dataset.regle] === (b.dataset.valeur === "1"));
+  });
   $("rAcces").hidden = !r.reseau;
   $("rAdresse").textContent = r.adresse || "ordinateur hors réseau";
   $("rCode").textContent = r.code || "";
   $("rAide").textContent = r.reseau
     ? "Ouvrez cette adresse sur un téléphone relié au même Wi-Fi, puis saisissez le code. Si l'ordinateur demande d'autoriser les connexions entrantes, acceptez."
     : "Les appareils du même Wi-Fi pourront ouvrir cette page, après avoir saisi un code.";
+  $("rLien").textContent = etat.site;
+  $("rVersion").textContent = "BlokBambu version " + etat.version + (etat.maj ? " · la version " + etat.maj.version + " est parue" : " · à jour");
 }
-function regler(actif) {
-  envoyer("/reglages", { reseau: actif ? "1" : "0" }).then(dessinerReglages)
+function regler(champs) {
+  $("rErreur").textContent = "";
+  return envoyer("/reglages", champs).then(dessinerReglages)
     .catch(function () { $("rErreur").textContent = "BlokBambu n'a pas pu enregistrer."; });
 }
-$("rOui").addEventListener("click", function () { regler(true); });
-$("rNon").addEventListener("click", function () { regler(false); });
-$("reglages").addEventListener("click", function () { if (etat) { $("rErreur").textContent = ""; dessinerReglages(); $("ficheReglages").showModal(); } });
+function gererImprimante(chemin, champs) {
+  $("rErreur").textContent = "";
+  imprimantesVues = "";
+  return envoyer(chemin, champs).then(dessinerReglages)
+    .catch(function () { $("rErreur").textContent = "BlokBambu n'a pas pu enregistrer."; });
+}
+function ouvrirReglages() {
+  if (!etat || !etat.local) return;
+  $("rErreur").textContent = ""; $("rErreurAjout").textContent = "";
+  $("rAjout").hidden = true; $("rAjouter").hidden = false;
+  imprimantesVues = "";
+  dessinerReglages();
+  $("ficheReglages").showModal();
+}
+$("ficheReglages").addEventListener("click", function (ev) {
+  var c = ev.target.closest("button");
+  if (!c) return;
+  if (c.dataset.regle) { var champs = {}; champs[c.dataset.regle] = c.dataset.valeur; regler(champs); }
+  else if (c.dataset.suivre) gererImprimante("/imprimante/suivre", { id: c.dataset.suivre });
+  else if (c.dataset.retirer) {
+    if (c.classList.contains("sur")) { gererImprimante("/imprimante/retirer", { id: c.dataset.retirer }); return; }
+    c.style.minWidth = c.offsetWidth + "px";  // le libellé change sans que la ligne bouge
+    c.classList.add("sur"); c.textContent = "Sûr ?";
+    setTimeout(function () { c.classList.remove("sur"); c.textContent = "Retirer"; }, 4000);
+  }
+});
+$("ficheReglages").addEventListener("change", function (ev) {
+  var c = ev.target;
+  if (c.dataset.nom) gererImprimante("/imprimante", { id: c.dataset.nom, nom: c.value.trim() });
+  else if (c.id === "rSeuil" && c.value !== "") regler({ seuil: c.value });
+});
+$("ficheReglages").addEventListener("keydown", function (ev) {
+  if (ev.key === "Enter" && ev.target.tagName === "INPUT") { ev.preventDefault(); if (ev.target.closest("#rAjout")) $("rValiderAjout").click(); else ev.target.blur(); }
+});
+$("rAjouter").addEventListener("click", function () { $("rAjout").hidden = false; $("rAjouter").hidden = true; $("rErreurAjout").textContent = ""; $("rNomImprimante").focus(); });
+$("rAnnulerAjout").addEventListener("click", function () { $("rAjout").hidden = true; $("rAjouter").hidden = false; });
+$("rValiderAjout").addEventListener("click", function () {
+  var bouton = $("rValiderAjout"), champs = { nom: $("rNomImprimante").value.trim(), adresse: $("rAdresseImprimante").value.trim(), code: $("rCodeImprimante").value.trim() };
+  if (!champs.adresse || !champs.code) { $("rErreurAjout").textContent = "Indiquez l'adresse IP et le code d'accès de l'imprimante."; return; }
+  bouton.disabled = true;
+  $("rErreurAjout").textContent = "Recherche de l'imprimante…";
+  imprimantesVues = "";
+  envoyer("/imprimante/ajouter", champs).then(function () {
+    $("rNomImprimante").value = $("rAdresseImprimante").value = $("rCodeImprimante").value = "";
+    $("rErreurAjout").textContent = ""; $("rAjout").hidden = true; $("rAjouter").hidden = false;
+    dessinerReglages();
+  }).catch(function (x) { $("rErreurAjout").textContent = x.message || "BlokBambu n'a pas pu joindre l'imprimante."; })
+    .then(function () { bouton.disabled = false; });
+});
+$("rPartager").addEventListener("click", function () { copier(etat.site, $("rPartager")); });
+$("reglages").addEventListener("click", ouvrirReglages);
+$("gerer").addEventListener("click", ouvrirReglages);
 
 // ---------------------------------------------------------------- commun
 
 document.addEventListener("click", function (ev) {
-  var b = ev.target.closest("[data-fiche], [data-impression], [data-fermer], [data-alerte]");
+  var b = ev.target.closest("[data-fiche], [data-impression], [data-fermer], [data-alerte], [data-copier], [data-maj], [data-filtre]");
   if (!b) return;
   if (b.dataset.fermer !== undefined) { b.closest("dialog").close(); return; }
   if (b.dataset.alerte) { envoyer("/alerte/fermer", { id: b.dataset.alerte }); return; }
+  if (b.dataset.copier) { copier(b.dataset.copier, b); return; }
   if (!etat) return;
-  if (b.dataset.fiche) ouvrir(b.dataset.fiche, b.dataset.mode);
+  if (b.dataset.maj) { memoire("maj", b.dataset.maj); rendre(); }
+  else if (b.dataset.filtre !== undefined) { filtre = b.dataset.filtre; rendre(); }
+  else if (b.dataset.fiche) ouvrir(b.dataset.fiche, b.dataset.mode);
   else ouvrirImpression(b.dataset.impression);
 });
 $("ajouter").addEventListener("click", function () { if (etat) ouvrir(null, "ajouter"); });
+$("ajouterImpression").addEventListener("click", function () { if (etat) ouvrirImpression(""); });
 
 function occupe() { return $("fiche").open || $("ficheImpression").open; }
 charger();

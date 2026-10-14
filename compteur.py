@@ -13,8 +13,10 @@ et la bobine qui a vraiment fourni le fil.
 Fonctionne sur macOS, Windows et Linux, avec la seule bibliothèque standard de Python.
 """
 import argparse
+import ftplib
 import glob
 import hashlib
+import io
 import ipaddress
 import json
 import os
@@ -82,7 +84,7 @@ PAGE = "BlokBambu.html"
 PORT = 47815
 PAUSE = 3  # secondes entre deux passages
 BOBINE_NEUVE = 1000  # grammes
-PRESQUE_VIDE = 100   # grammes : en dessous, la bobine est signalée
+PRESQUE_VIDE = 100   # grammes : en dessous, la bobine est signalée (réglable sur la page)
 TYPES = ["PLA", "PETG", "ABS", "ASA", "TPU", "PA", "PC"]
 EXTERNE = "254"  # le numéro que l'imprimante donne à la bobine posée hors de l'AMS
 
@@ -90,6 +92,13 @@ EXTERNE = "254"  # le numéro que l'imprimante donne à la bobine posée hors de
 # Bambu Lab (AC_BAMBU, en fin de fichier) permet de la reconnaître avant de lui présenter ce code.
 STABILISATION = 20   # secondes sans changement avant d'annoncer une bobine chargée
 REMPLACEMENT = 180   # secondes : une bobine retirée puis remise dans ce délai est une bobine changée
+ATTENTE_STUDIO = 120  # secondes laissées à Bambu Studio pour écrire son fichier avant de dire l'impression lancée ailleurs
+
+# Le dépôt public : la page y renvoie pour le partage, et y lit quelle version est parue.
+SITE = "https://github.com/Blokstats/blokbambu"
+DEPOT = "https://raw.githubusercontent.com/Blokstats/blokbambu/main/"
+# Grammes par centimètre cube, pour estimer une longueur de fil d'après son poids.
+DENSITES = {"PLA": 1.24, "PETG": 1.27, "ABS": 1.04, "ASA": 1.07, "TPU": 1.21, "PA": 1.14, "PC": 1.2}
 ETATS_IMPRIMANTE = {
     "recherche": "Recherche de l'imprimante…",
     "connectee": "Imprimante connectée : une fenêtre vous prévient quand une bobine est chargée ou retirée.",
@@ -160,8 +169,11 @@ def lire_envoi(chemin):
                 reglages = json.loads(z.read("Metadata/project_settings.config"))
             except ValueError:
                 pass
-    presets = reglages.get("filament_settings_id") or []
+    return envoi_de(racine, noms, reglages.get("filament_settings_id") or [])
 
+
+def envoi_de(racine, noms, presets, plateau=None):
+    """Ce que dit le résumé de tranchage (slice_info) d'un fichier d'impression dont on connaît le contenu."""
     plateaux = []
     for p in racine.findall("plate"):
         meta = {m.get("key"): m.get("value") for m in p.findall("metadata")}
@@ -171,6 +183,8 @@ def lire_envoi(chemin):
     envoyes = [(m, p) for m, p in plateaux if "Metadata/plate_%s.gcode" % m.get("index") in noms]
     if envoyes:
         plateaux = envoyes
+    if plateau and any(m.get("index") == str(plateau) for m, _ in plateaux):
+        plateaux = [(m, p) for m, p in plateaux if m.get("index") == str(plateau)]
 
     fils, indices, objets, secondes = {}, [], [], 0
     for meta, p in plateaux:
@@ -184,7 +198,7 @@ def lire_envoi(chemin):
             numero = int(f.get("id") or 0)
             nom = presets[numero - 1].split(" @")[0] if 0 < numero <= len(presets) else ""
             cle = (couleur_propre(f.get("color")), f.get("type") or "", nom)
-            fil = fils.setdefault(cle, {"couleur": cle[0], "type": cle[1], "nom": nom, "g": 0.0, "m": 0.0})
+            fil = fils.setdefault(cle, {"couleur": cle[0], "type": cle[1], "nom": nom, "g": 0.0, "m": 0.0, "numero": numero})
             fil["g"] = round(fil["g"] + g, 2)
             fil["m"] = round(fil["m"] + float(f.get("used_m") or 0), 2)
     if not fils:
@@ -230,8 +244,29 @@ def lire_journal(donnees):
 
 
 def lire_bobines(donnees):
-    """{"#RRGGBB|TYPE": {couleur, type, poids, depuis}} — une bobine suivie par couleur et type de fil."""
-    return lire(donnees, "bobines.json", {})
+    """{identifiant: {couleur, type, marque, poids, prix, reserve, depuis, emplacement}} — les bobines suivies."""
+    b = lire(donnees, "bobines.json", {})
+    return {i: fiche for i, fiche in b.items() if isinstance(fiche, dict)} if isinstance(b, dict) else {}
+
+
+def reprendre_anciennes_donnees(donnees):
+    """Avant, une seule bobine par couleur et type de fil, désignée par eux. Chacune reçoit un
+    identifiant, noté sur les fils des impressions qu'elle a fournies : plusieurs bobines de la
+    même couleur peuvent alors se suivre côte à côte."""
+    with verrou:
+        bobines = lire(donnees, "bobines.json", {})
+        if not isinstance(bobines, dict) or not any("|" in cle for cle in bobines):
+            return False
+        idents = {cle: hashlib.sha1(cle.encode("utf-8")).hexdigest()[:8] for cle in bobines if "|" in cle}
+        journal = lire_journal(donnees)
+        for entree in journal:
+            for fil in entree.get("fils", []):
+                cle = cle_fil(fil)
+                if cle in idents and "bobine" not in fil and entree["date"] >= bobines[cle].get("depuis", ""):
+                    fil["bobine"] = idents[cle]
+        ecrire_json(donnees, "impressions.json", journal)
+        ecrire_json(donnees, "bobines.json", {idents.get(cle, cle): b for cle, b in bobines.items()})
+        return True
 
 
 def relever_couleurs(dossier, donnees):
@@ -280,24 +315,25 @@ def comptees(journal):
 
 
 def restes(journal, bobines):
-    """Ce qu'il reste sur chaque bobine suivie, d'après les impressions comptées depuis sa pose."""
-    r = {cle: float(b["poids"]) for cle, b in bobines.items()}
+    """Ce qu'il reste sur chaque bobine suivie, d'après les impressions qui s'en sont servies."""
+    r = {ident: float(b["poids"]) for ident, b in bobines.items()}
     for entree in comptees(journal):
         for f in entree["fils"]:
-            cle = cle_fil(f)
-            if cle in r and entree["date"] >= bobines[cle]["depuis"]:
-                r[cle] -= f["g"] * part(entree)
+            if f.get("bobine") in r:
+                r[f["bobine"]] -= f["g"] * part(entree)
     return r
 
 
 def poser_prix(entree, bobines):
     """Note sur chaque fil le prix au kilo de sa bobine : le coût d'une impression ne bouge plus ensuite."""
     for f in entree["fils"]:
-        b = bobines.get(cle_fil(f))
-        if b and b.get("prix") and entree["date"] >= b["depuis"]:
-            f["prix_kg"] = b["prix"]
-        else:
+        if not f.get("bobine"):
             f.pop("prix_kg", None)
+        elif f["bobine"] in bobines:  # une bobine remplacée depuis : le prix noté alors est gardé
+            if bobines[f["bobine"]].get("prix"):
+                f["prix_kg"] = bobines[f["bobine"]]["prix"]
+            else:
+                f.pop("prix_kg", None)
 
 
 def cout(entree):
@@ -306,10 +342,29 @@ def cout(entree):
     return round(sum(prix), 2) if prix else None
 
 
+def temps(entree):
+    """Le temps d'impression, en secondes : celui prévu par Bambu Studio pour la part faite, sinon
+    celui observé sur l'imprimante, pauses déduites."""
+    if entree.get("secondes"):
+        return entree["secondes"] * part(entree)
+    return float(entree.get("duree") or 0)
+
+
+def metres(grammes, type_fil):
+    """Longueur estimée d'un fil de 1,75 mm d'après son poids, quand Bambu Studio ne l'a pas donnée."""
+    densite = DENSITES.get(re.split(r"[^A-Z]", type_fil.upper())[0], DENSITES["PLA"])
+    return round(grammes / (densite * 2.405), 2)
+
+
 def poids_texte(g):
     if g >= 1000:
         return ("%.2f" % (g / 1000)).rstrip("0").rstrip(".").replace(".", ",") + " kg"
     return "%d g" % round(g)
+
+
+def duree_texte(secondes):
+    heures, minutes = int(secondes // 3600), int(secondes % 3600 // 60)
+    return "%d h %02d" % (heures, minutes) if heures else "%d min" % max(minutes, 1)
 
 
 def ecart(couleur_a, couleur_b):
@@ -323,28 +378,194 @@ def ecart(couleur_a, couleur_b):
 def attribuer_bacs(entree, utilises, bobines, fin):
     """Rattache les fils d'une impression aux bobines qui ont vraiment fourni.
 
-    `utilises` : les fils (couleur, type) des emplacements vus en service pendant l'impression.
+    `utilises` : ce qu'il y avait dans les emplacements vus en service ({couleur, type, bobine, bac}).
     L'imprimante ne dit pas quel fil du projet va sur quel emplacement : avec plusieurs fils, on
     attend la fin et on prend, pour chacun, l'emplacement utilisé de la couleur la plus proche.
+    Une impression lancée ailleurs que depuis Bambu Studio n'a pas de fils connus : ce sont ceux
+    des emplacements utilisés, grammes à compléter.
     """
+    if entree.get("a_completer"):
+        fils = []
+        for u in utilises:
+            f = {"couleur": u["couleur"], "type": u["type"], "nom": "", "g": 0.0, "m": 0.0, "bac": u["bac"]}
+            if u.get("bobine"):
+                f["bobine"] = u["bobine"]
+            fils.append(f)
+        if fils == entree["fils"]:
+            return False
+        entree["fils"] = fils
+        return True
     fils = entree["fils"]
     if not utilises or (len(fils) > 1 and (not fin or len(utilises) < len(fils))):
         return False
     change = False
     for f in fils:
+        if f.get("bobine_choisie"):  # la personne a dit quelle bobine a servi : on n'y revient pas
+            continue
         origine = f.get("projet") or {"couleur": f["couleur"], "type": f["type"]}
         if len(fils) == 1:
             choix = utilises[0]
         else:
             memes = [u for u in utilises if u["type"] == origine["type"]] or utilises
             choix = min(memes, key=lambda u: ecart(u["couleur"], origine["couleur"]))
-        if (choix["couleur"], choix["type"]) != (f["couleur"], f["type"]):
-            f["projet"] = origine
+        if (choix["couleur"], choix["type"], choix.get("bobine")) != (f["couleur"], f["type"], f.get("bobine")):
+            if (choix["couleur"], choix["type"]) != (origine["couleur"], origine["type"]):
+                f["projet"] = origine
             f["couleur"], f["type"] = choix["couleur"], choix["type"]
+            if choix.get("bobine"):
+                f["bobine"] = choix["bobine"]
+            else:
+                f.pop("bobine", None)
             change = True
     if change:
         poser_prix(entree, bobines)
     return change
+
+
+# ---------------------------------------------------------------- imprimantes et emplacements gardés
+
+def repere_de(serie):
+    """Ce qui désigne une imprimante dans les fichiers : son numéro de série n'y est jamais écrit."""
+    return hashlib.sha1(serie.encode("utf-8")).hexdigest()[:10]
+
+
+def imprimantes_gardees(donnees):
+    """La mémoire des imprimantes, par repère : rang, nom donné, emplacements vus au dernier contact."""
+    m = lire(donnees, "imprimantes.json", {})
+    return {r: fiche for r, fiche in m.items() if isinstance(fiche, dict)} if isinstance(m, dict) else {}
+
+
+def suivies(memoire):
+    """Les imprimantes suivies, dans l'ordre de leur rang : [(repère, fiche)]."""
+    return sorted(((r, fiche) for r, fiche in memoire.items() if fiche.get("suivie", True) and not fiche.get("retiree")),
+                  key=lambda x: x[1].get("numero", 0))
+
+
+def nom_imprimante(memoire, repere):
+    """Le nom donné à une imprimante ; sinon « Imprimante », avec son rang s'il y en a plusieurs."""
+    fiche = memoire.get(repere)
+    if fiche is None:
+        return "Autre imprimante"
+    seule = [r for r, _ in suivies(memoire)] == [repere]
+    return fiche.get("nom") or ("Imprimante" if seule else "Imprimante %d" % fiche.get("numero", 0))
+
+
+def imprimante_de(entree, memoire):
+    """Le repère de l'imprimante qui a fait une impression, ou None si on ne le sait pas."""
+    choisie = entree.get("imprimante")
+    if isinstance(choisie, str):
+        return choisie or None
+    if entree.get("tache"):
+        return entree["tache"].partition(":")[0]
+    if isinstance(choisie, int):  # avant, c'était le rang de l'imprimante
+        return next((r for r, fiche in memoire.items() if fiche.get("numero") == choisie), None)
+    return None
+
+
+def rattacher(donnees):
+    """Tant qu'une seule imprimante est suivie, les impressions dont on ignore l'imprimante sont les siennes."""
+    memoire = imprimantes_gardees(donnees)
+    seules = [r for r, _ in suivies(memoire)]
+    if len(seules) != 1:
+        return
+    with verrou:
+        journal = lire_journal(donnees)
+        sans = [e for e in journal if imprimante_de(e, memoire) is None]
+        for entree in sans:
+            entree["imprimante"] = seules[0]
+        if sans:
+            ecrire_json(donnees, "impressions.json", journal)
+
+
+def ordre_emplacement(cle):
+    """A1, A2… puis la bobine externe."""
+    if cle == EXTERNE:
+        return 99
+    unite, _, bac = cle.partition("-")
+    try:
+        return int(unite) * 4 + int(bac)
+    except ValueError:
+        return 98
+
+
+def emplacements_connus(imprimantes):
+    """Les emplacements des imprimantes données ([(repère, fiche)]), tels que gardés au dernier contact.
+
+    Sans imprimante suivie, un AMS et la bobine externe restent proposés : on peut ranger ses
+    bobines par emplacement même sans liaison.
+    """
+    liste = []
+    for position, (repere, fiche) in enumerate(imprimantes or [("", {})]):
+        connus = dict(fiche.get("emplacements") or {})
+        for cle in ["0-%d" % bac for bac in range(4)] + [EXTERNE]:
+            connus.setdefault(cle, {})
+        for cle in sorted(connus, key=ordre_emplacement):
+            e = connus[cle]
+            poids_puce, remain = e.get("poids_puce") or 0, e.get("remain")
+            lu = e.get("puce") and poids_puce > 0 and remain is not None and 0 <= remain <= 100
+            liste.append(dict(e, id="%s:%s" % (repere, cle), imprimante=repere, bac=cle, nom=nom_emplacement(cle),
+                              rang=position * 100 + ordre_emplacement(cle),
+                              reste_puce=round(poids_puce * remain / 100, 1) if lu else None))
+    return liste
+
+
+def place_choisie(bobine, par_id):
+    """L'emplacement où la personne a dit avoir posé cette bobine, s'il existe toujours."""
+    choix = bobine.get("emplacement") or ""
+    if choix in par_id:
+        return choix
+    repere, _, cle = choix.partition(":")
+    if choix and not repere:  # choisi quand aucune imprimante n'était suivie : il vaut pour la première
+        return next((i for i in par_id if i.endswith(":" + cle)), None)
+    return None
+
+
+def occupation(places, bobines, annonces_sures=True):
+    """Qui occupe chaque emplacement : {id: {cle, bobine, choisi}}.
+
+    La bobine que la personne y a posée sur la page fait foi. Sinon c'est le fil que l'imprimante
+    annonce : la bobine suivie de cette couleur et de ce type qui n'est pas posée ailleurs (la plus
+    ancienne s'il y en a plusieurs), ou aucune — un fil chargé mais pas suivi.
+    """
+    par_id = {p["id"]: p for p in places}
+    posees = {}
+    for ident, b in bobines.items():
+        choix = place_choisie(b, par_id)
+        if choix:
+            posees[choix] = ident
+    libres = {}
+    for ident, b in sorted(bobines.items(), key=lambda x: x[1].get("depuis", "")):
+        if ident not in posees.values():
+            libres.setdefault(cle_fil(b), []).append(ident)
+    occupe = {}
+    for p in places:
+        present = p.get("present") if annonces_sures else p.get("present") is not False
+        if p["id"] in posees:
+            occupe[p["id"]] = {"cle": cle_fil(bobines[posees[p["id"]]]), "bobine": posees[p["id"]], "choisi": True}
+        elif present and p.get("couleur") and p.get("type"):
+            cle = "%s|%s" % (p["couleur"], p["type"])
+            memes = libres.get(cle) or []
+            occupe[p["id"]] = {"cle": cle, "bobine": memes.pop(0) if memes else None, "choisi": False}
+    return occupe
+
+
+def bobine_probable(cle, bobines, occupe):
+    """La bobine suivie qui fournit sans doute ce fil : la seule de cette couleur et de ce type,
+    sinon celle qui est sur l'imprimante, sinon la plus ancienne."""
+    memes = [i for i, b in sorted(bobines.items(), key=lambda x: x[1].get("depuis", "")) if cle_fil(b) == cle]
+    en_place = [o["bobine"] for o in occupe.values() if o["bobine"] in memes]
+    return (en_place or memes or [None])[0]
+
+
+def poser_bobine(bobines, ident, emplacement):
+    """Pose une bobine à un emplacement (ou « automatique » : vide). Celle qui s'y trouvait le quitte."""
+    for b in bobines.values():
+        if emplacement and b.get("emplacement") == emplacement:
+            del b["emplacement"]
+    if emplacement:
+        bobines[ident]["emplacement"] = emplacement
+    else:
+        bobines[ident].pop("emplacement", None)
 
 
 # ---------------------------------------------------------------- fenêtres d'alerte
@@ -478,7 +699,12 @@ class Veilleur:
             with verrou:
                 journal, bobines = lire_journal(self.donnees), lire_bobines(self.donnees)
                 reste = restes(journal, bobines)
+                occupe = occupation(emplacements_connus(suivies(imprimantes_gardees(self.donnees))), bobines)
                 for entree in nouvelles:
+                    for f in entree["fils"]:
+                        choix = bobine_probable(cle_fil(f), bobines, occupe)
+                        if choix:
+                            f["bobine"] = choix
                     poser_prix(entree, bobines)
                     self.alerter(entree, bobines, reste)
                 journal += nouvelles
@@ -488,18 +714,18 @@ class Veilleur:
 
     def alerter(self, entree, bobines, reste):
         """Prévient si l'impression demande plus de fil qu'il n'en reste, ou vide la dernière bobine."""
-        lignes = []
+        lignes, seuil = [], lire_reglages(self.donnees)["seuil"]
         for f in entree["fils"]:
-            cle = cle_fil(f)
+            cle = f.get("bobine")
             if cle not in bobines:
                 continue
             avant = reste[cle]
             reste[cle] = avant - f["g"]
-            nom = nom_couleur(f["couleur"])
+            nom = " ".join(x for x in (nom_couleur(f["couleur"]), bobines[cle].get("marque")) if x)
             if f["g"] > avant:
                 lignes.append("%s : il faut %s, il en reste environ %s sur la bobine."
                               % (nom, poids_texte(f["g"]), poids_texte(max(avant, 0))))
-            elif avant >= PRESQUE_VIDE > reste[cle] and bobines[cle].get("reserve") == 0:
+            elif avant >= seuil > reste[cle] and bobines[cle].get("reserve") == 0:
                 lignes.append("%s : bientôt vide, et plus de bobine en réserve." % nom)
         if lignes:
             self.fenetres.montrer("« %s » vient d'être lancée.\n%s" % (entree["projet"], "\n".join(lignes)))
@@ -525,6 +751,7 @@ INDICES_MARQUE = [("bambu", "Bambu Lab"), ("esun", "eSUN"), ("poly", "Polymaker"
 CODES_MARQUE = {"GFL00": "Polymaker", "GFL01": "Polymaker", "GFL03": "eSUN", "GFL04": "Overture", "GFL05": "Overture"}
 ETATS_COURTS = {"recherche": "recherchée", "connectee": "connectée", "injoignable": "injoignable",
                 "bloquee": "bloquée", "refusee": "refusée", "sans_code": "sans code"}
+EMPLACEMENT = r"(?:(?:[0-9a-f]{10})?:(?:254|\d{1,2}-\d))?"  # « repère:emplacement », ou vide pour « automatique »
 MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre",
         "novembre", "décembre"]
 
@@ -582,7 +809,76 @@ def marques_proposees(donnees):
 
 def lire_reglages(donnees):
     r = lire(donnees, "reglages.json", {})
-    return {"reseau": bool(r.get("reseau")), "code": str(r.get("code") or ""), "secret": str(r.get("secret") or "")}
+    r = r if isinstance(r, dict) else {}
+    try:
+        seuil = max(min(int(r.get("seuil", PRESQUE_VIDE)), 5000), 0)
+    except (TypeError, ValueError):
+        seuil = PRESQUE_VIDE
+    return {"reseau": bool(r.get("reseau")), "code": str(r.get("code") or ""), "secret": str(r.get("secret") or ""),
+            "seuil": seuil, "fin": r.get("fin", True) is not False, "carte": bool(r.get("carte"))}
+
+
+# ----- mise à jour : la page dit qu'une version plus récente est parue ; rien ne s'installe tout seul
+
+def lire_version(texte):
+    """(numéro, ce qui change) d'un fichier version.txt : le numéro en première ligne, les nouveautés ensuite."""
+    lignes = [ligne.strip() for ligne in texte.strip().splitlines()]
+    try:
+        return int(lignes[0]), " ".join(ligne for ligne in lignes[1:] if ligne)[:300]
+    except (IndexError, ValueError):
+        return 0, ""
+
+
+def version_installee():
+    try:
+        with open(os.path.join(ICI, "version.txt"), encoding="utf-8") as fichier:
+            return lire_version(fichier.read())[0]
+    except OSError:
+        return 0
+
+
+def ligne_installation():
+    """La ligne à relancer pour mettre à jour, celle du README pour ce système."""
+    if MAC:
+        return "curl -fsSL %sinstaller.sh | zsh" % DEPOT
+    if WINDOWS:
+        return "irm %sinstaller.ps1 | iex" % DEPOT
+    return "curl -fsSL %sinstaller-linux.sh | sh" % DEPOT
+
+
+class Nouveautes(threading.Thread):
+    """Regarde une fois par jour si le dépôt porte une version plus récente. Rien n'est envoyé, rien n'est installé."""
+
+    def __init__(self, adresse, attente=8):
+        super().__init__(daemon=True)
+        self.adresse, self.attente, self.ici, self.parue = adresse, attente, version_installee(), None
+
+    def lire(self):
+        try:
+            with urllib.request.urlopen(self.adresse, timeout=15) as reponse:
+                return reponse.read(4000).decode("utf-8", "replace")
+        except Exception:
+            pass
+        try:  # certains Python (macOS) n'ont pas les certificats du système : curl, lui, les a
+            sortie = subprocess.run(["curl", "-fsSL", "--max-time", "15", self.adresse], capture_output=True,
+                                    timeout=20, **SANS_FENETRE).stdout
+            return sortie[:4000].decode("utf-8", "replace")
+        except (OSError, subprocess.SubprocessError):
+            return ""
+
+    def run(self):
+        time.sleep(self.attente)
+        while True:
+            numero, quoi = lire_version(self.lire())
+            self.parue = {"version": numero, "quoi": quoi} if numero > self.ici else None
+            fin = time.time() + (24 * 3600 if numero else 3600)
+            while time.time() < fin:
+                time.sleep(60)
+
+    def annonce(self):
+        parue = self.parue
+        return parue and dict(parue, commande=ligne_installation(),
+                              ou="le Terminal" if MAC else "PowerShell" if WINDOWS else "un terminal")
 
 
 def jeton_reseau(reglages):
@@ -600,132 +896,197 @@ def adresse_locale():
     return adresse if ipaddress.ip_address(adresse).is_private and not adresse.startswith("127.") else None
 
 
-def emplacements_connus(donnees):
-    """Les emplacements de toutes les imprimantes, tels que gardés au dernier contact."""
-    parc = lire(donnees, "imprimantes.json", {})
-    plusieurs = len(parc) > 1
-    liste = []
-    for memoire in sorted(parc.values(), key=lambda m: m.get("numero", 0)):
-        for cle, e in sorted((memoire.get("emplacements") or {}).items()):
-            fiche = dict(e, nom=("%d·" % memoire.get("numero", 1) if plusieurs else "") + nom_emplacement(cle))
-            poids_puce, remain = e.get("poids_puce") or 0, e.get("remain")
-            lu = e.get("puce") and poids_puce > 0 and remain is not None and 0 <= remain <= 100
-            fiche["reste_puce"] = round(poids_puce * remain / 100, 1) if lu else None
-            liste.append(fiche)
-    return liste
-
-
-def etat_page(donnees, parc=None, local=True, port=PORT):
+def etat_page(donnees, parc=None, local=True, port=PORT, nouveautes=None):
     """Tout ce que la page affiche, calculé à la demande."""
     journal, bobines = comptees(lire_journal(donnees)), lire_bobines(donnees)
     connues = lire(donnees, "couleurs.json", {})
+    reglages = lire_reglages(donnees)
+    memoire = imprimantes_gardees(donnees)
+    ecoutees = suivies(memoire) if parc else []
+    vivantes = parc.etats() if parc else {}
     reste = restes(journal, bobines)
-    en_cours = parc.en_cours() if parc else {}
+    maintenant = datetime.now()
+    ce_mois = maintenant.strftime("%Y-%m")
 
-    totaux, mois = {}, {}
+    def compte():
+        return {"impressions": 0, "g": 0.0, "cout": 0.0, "prix": False, "secondes": 0.0}
+
+    def chiffres(c):
+        return {"impressions": c["impressions"], "g": round(c["g"], 2), "secondes": round(c["secondes"]),
+                "cout": round(c["cout"], 2) if c["prix"] else None}
+
+    totaux, mois, machines = {}, {}, {}
     for entree in journal:
-        p = part(entree)
-        m = mois.setdefault(entree["date"][:7], {"impressions": 0, "g": 0.0, "cout": 0.0, "prix": False})
-        m["impressions"] += 1
-        prix = cout(entree)
-        if prix is not None:
-            m["cout"], m["prix"] = m["cout"] + prix, True
+        p, prix, duree = part(entree), cout(entree), temps(entree)
+        grammes = sum(f["g"] for f in entree["fils"]) * p
+        machine = machines.setdefault(imprimante_de(entree, memoire), {"total": compte(), "mois": compte()})
+        comptes = [mois.setdefault(entree["date"][:7], compte()), machine["total"]]
+        if entree["date"][:7] == ce_mois:
+            comptes.append(machine["mois"])
+        for c in comptes:
+            c["impressions"] += 1
+            c["g"] += grammes
+            c["secondes"] += duree
+            if prix is not None:
+                c["cout"], c["prix"] = c["cout"] + prix, True
         for f in entree["fils"]:
+            if not f["g"]:  # impression à compléter : ses grammes ne sont pas encore connus
+                continue
             t = totaux.setdefault(cle_fil(f), {"noms": [], "g": 0.0, "m": 0.0, "n": 0})
             t["g"] += f["g"] * p
             t["m"] += f["m"] * p
             t["n"] += 1
-            m["g"] += f["g"] * p
             if f.get("nom") and f["nom"] not in t["noms"]:
                 t["noms"].append(f["nom"])
 
-    charges, puces, codes = {}, {}, {}  # par couleur|type : emplacements, reste lu sur la puce, code de fil
-    for e in emplacements_connus(donnees):
-        if e.get("present") and e.get("couleur") and e.get("type"):
-            cle = "%s|%s" % (e["couleur"], e["type"])
-            charges.setdefault(cle, []).append(e["nom"])
-            if e["reste_puce"] is not None:
-                puces[cle] = (e["reste_puce"], e.get("poids_puce") or BOBINE_NEUVE)
-            if e.get("indice"):
-                codes[cle] = e["indice"]
+    # Les imprimantes dont on parle : celles qu'on suit, puis celles qui ont fait des impressions.
+    noms = {r: nom_imprimante(memoire, r) for r, _ in ecoutees}
+    for r in machines:
+        if r and r not in noms:
+            noms[r] = nom_imprimante(memoire, r)
+    plusieurs = len(ecoutees) > 1
 
-    def fiche(cle):
+    # Où est chaque bobine : là où on l'a posée sur la page, sinon là où l'imprimante annonce son fil.
+    places = emplacements_connus(ecoutees)
+    par_id = {p["id"]: p for p in places}
+    occupe = occupation(places, bobines)
+    lieux, sans_bobine, puces, codes = {}, {}, {}, {}
+    for p in places:
+        o = occupe.get(p["id"])
+        if not o:
+            continue
+        qui = o["bobine"] or o["cle"]
+        (lieux if o["bobine"] else sans_bobine).setdefault(qui, []).append(p)
+        if not o["choisi"]:
+            if p["reste_puce"] is not None:  # seules les bobines Bambu Lab portent une puce
+                puces[qui] = (p["reste_puce"], p.get("poids_puce") or BOBINE_NEUVE)
+            if p.get("indice"):
+                codes[qui] = p["indice"]
+
+    def fiche(cle, ou=()):
         couleur, _, type_fil = cle.partition("|")
         return {"cle": cle, "couleur": couleur, "nom": nom_couleur(couleur), "type": type_fil,
-                "emplacements": charges.get(cle, [])}
+                "emplacements": [p["nom"] for p in ou], "rang": min([p["rang"] for p in ou] + [9999]),
+                "imprimantes": list(dict.fromkeys(noms[p["imprimante"]] for p in ou)) if plusieurs else []}
 
-    def marque_probable(cle):
-        if cle in puces:  # seules les bobines Bambu Lab portent une puce
+    def marque_probable(cle, qui=None):
+        if (qui or cle) in puces:
             return "Bambu Lab"
-        return CODES_MARQUE.get(codes.get(cle, "")) or marque_devinee(totaux[cle]["noms"] if cle in totaux
-                                                                    else connues.get(cle, []))
+        return CODES_MARQUE.get(codes.get(qui or cle, "")) or marque_devinee(totaux[cle]["noms"] if cle in totaux
+                                                                             else connues.get(cle, []))
 
-    suivies, reste_total, a_racheter = [], 0.0, []
-    for cle in sorted(set(bobines) | set(puces), key=cle_tri):
-        b = bobines.get(cle)
-        f = fiche(cle)
-        if cle in puces:  # la puce d'une bobine Bambu Lab dit ce qu'il reste : elle fait foi
-            valeur, plein = puces[cle]
-            f["source"] = "puce"
+    def jauge(valeur, plein):  # se lit par rapport à une bobine pleine, pas par rapport au poids saisi
+        return {"reste": round(valeur, 2), "poids": plein, "bas": valeur < reglages["seuil"],
+                "part": round(max(min(valeur / max(plein, BOBINE_NEUVE), 1), 0), 4)}
+
+    cartes, reste_total, a_racheter = [], 0.0, []
+    for ident, b in sorted(bobines.items(), key=lambda x: cle_tri(cle_fil(x[1])) + (x[1].get("depuis", ""),)):
+        cle, choix = cle_fil(b), place_choisie(b, par_id)
+        f = fiche(cle, lieux.get(ident, []))
+        if ident in puces:  # la puce d'une bobine Bambu Lab dit ce qu'il reste : elle fait foi
+            f.update(jauge(*puces[ident]), source="puce")
         else:
-            valeur, plein = reste[cle], b["poids"]
-        reste_total += max(valeur, 0)
-        # La jauge se lit par rapport à une bobine pleine, pas par rapport au poids saisi.
-        f.update(suivie=b is not None, marque=(b or {}).get("marque") or marque_probable(cle),
-                 poids=plein, depuis=(b or {}).get("depuis"), reste=round(valeur, 2),
-                 part=round(max(min(valeur / max(plein, BOBINE_NEUVE), 1), 0), 4), bas=valeur < PRESQUE_VIDE,
-                 prix=(b or {}).get("prix"), reserve=(b or {}).get("reserve"))
+            f.update(jauge(reste[ident], b["poids"]))
+        reste_total += max(f["reste"], 0)
+        f.update(id=ident, suivie=True, marque=b.get("marque") or marque_probable(cle, ident), depuis=b.get("depuis"),
+                 prix=b.get("prix"), reserve=b.get("reserve"), emplacement=choix or "",
+                 absente=bool(choix) and par_id[choix].get("present") is False)
         if f["bas"] and f["reserve"] == 0:
             a_racheter.append(" ".join(x for x in (f["nom"], f["marque"], f["type"]) if x))
-        suivies.append(f)
+        cartes.append(f)
+    for cle in sorted((c for c in sans_bobine if c in puces), key=cle_tri):  # bobine à puce, pas suivie ici
+        f = fiche(cle, sans_bobine[cle])
+        f.update(jauge(*puces[cle]), source="puce", id="", suivie=False, marque="Bambu Lab", depuis=None, prix=None,
+                 reserve=None, emplacement="", absente=False)
+        reste_total += max(f["reste"], 0)
+        cartes.append(f)
 
     # Fils chargés sur l'imprimante ou déjà imprimés, sans bobine suivie.
+    avec_bobine = {cle_fil(b) for b in bobines.values()}
     a_suivre = []
-    for cle in sorted((c for c in set(totaux) | set(charges) if c not in bobines and c not in puces), key=cle_tri):
-        f = fiche(cle)
+    for cle in sorted((c for c in set(totaux) | set(sans_bobine)
+                       if c not in puces and (c in sans_bobine or c not in avec_bobine)), key=cle_tri):
+        f = fiche(cle, sans_bobine.get(cle, []))
         f["marque"] = marque_probable(cle)
         a_suivre.append(f)
 
-    autres = sorted((c for c in connues if c not in bobines and c not in totaux and c not in charges), key=cle_tri)
-    maintenant = datetime.now()
-    courant = mois.get(maintenant.strftime("%Y-%m"), {"impressions": 0, "g": 0.0, "cout": 0.0, "prix": False})
-    total_cout = [m["cout"] for m in mois.values() if m["prix"]]
+    # Couleurs proposées à l'ajout : d'abord celles qui attendent d'être suivies.
+    proposees = list(dict.fromkeys([f["cle"] for f in a_suivre] + sorted((c for c in connues if c not in avec_bobine), key=cle_tri)
+                                   + sorted(avec_bobine, key=cle_tri)))
 
-    imprimantes = parc.etats() if parc else []
-    for i in imprimantes:
-        i.update(court=ETATS_COURTS.get(i["etat"], ""), texte=ETATS_IMPRIMANTE.get(i["etat"], ""),
-                 alerte=i["etat"] in ("bloquee", "refusee"))
+    en_cours = {v["tache"]["ident"]: v["tache"]["percent"] for v in vivantes.values() if v["tache"]}
+    imprimantes = []
+    for repere, _ in ecoutees:
+        v = vivantes.get(repere) or {"etat": "recherche", "tache": None}
+        tache, machine = None, machines.get(repere) or {"total": compte(), "mois": compte()}
+        if v["tache"]:
+            liee = next((en for en in journal if en.get("tache") == v["tache"]["ident"]
+                         and en.get("etat", "lancee") == "lancee"), None)
+            tache = {"projet": liee["projet"] if liee else nom_tache(v["tache"]["nom"]), "percent": v["tache"]["percent"],
+                     "pause": v["tache"]["pause"]}
+        charge = []
+        for p in places:
+            o = occupe.get(p["id"])
+            if p["imprimante"] != repere or (p["bac"] == EXTERNE and not o):
+                continue
+            couleur = o["cle"].partition("|")[0] if o else ""
+            charge.append({"nom": p["nom"], "couleur": couleur, "teinte": nom_couleur(couleur) if o else "",
+                           "type": o["cle"].partition("|")[2] if o else "",
+                           "marque": (bobines.get(o["bobine"]) or {}).get("marque", "") if o else ""})
+        imprimantes.append({"id": repere, "nom": noms[repere], "etat": v["etat"], "court": ETATS_COURTS.get(v["etat"], ""),
+                            "texte": ETATS_IMPRIMANTE.get(v["etat"], ""), "alerte": v["etat"] in ("bloquee", "refusee"),
+                            "impression": tache, "repos": bool(v.get("entendue")) and v["etat"] == "connectee" and not tache,
+                            "emplacements": charge, "total": chiffres(machine["total"]),
+                            "mois": chiffres(machine["mois"])})
 
+    courant = mois.get(ce_mois, compte())
+    total = compte()
+    for m in mois.values():
+        total["secondes"] += m["secondes"]
+        if m["prix"]:
+            total["cout"], total["prix"] = total["cout"] + m["cout"], True
     etat = {
         "imprimantes": imprimantes,
+        "machines": [{"id": r, "nom": nom} for r, nom in noms.items()],
         "resume": {"impressions": len(journal), "depuis": journal[0]["date"] if journal else None,
                    "g": round(sum(t["g"] for t in totaux.values()), 2), "reste": round(reste_total, 2),
-                   "cout": round(sum(total_cout), 2) if total_cout else None,
-                   "mois": {"nom": MOIS[maintenant.month - 1], "impressions": courant["impressions"],
-                            "g": round(courant["g"], 2), "cout": round(courant["cout"], 2) if courant["prix"] else None}},
-        "bobines": suivies,
+                   "cout": round(total["cout"], 2) if total["prix"] else None, "secondes": round(total["secondes"]),
+                   "mois": dict(chiffres(courant), nom=MOIS[maintenant.month - 1])},
+        "bobines": cartes,
         "a_suivre": a_suivre,
         "a_racheter": a_racheter,
-        "couleurs": [fiche(c) for c in [f["cle"] for f in a_suivre] + autres],
+        "couleurs": [fiche(c) for c in proposees],
+        "emplacements": [{"id": p["id"], "nom": p["nom"], "imprimante": noms.get(p["imprimante"], "") if plusieurs else ""}
+                         for p in places],
         "totaux": [dict(fiche(cle), fils=t["noms"], g=round(t["g"], 2), m=round(t["m"], 2), n=t["n"])
                    for cle, t in sorted(totaux.items(), key=lambda x: -x[1]["g"])],
-        "mois": [{"cle": cle, "nom": "%s %s" % (MOIS[int(cle[5:7]) - 1], cle[:4]), "impressions": m["impressions"],
-                  "g": round(m["g"], 2), "cout": round(m["cout"], 2) if m["prix"] else None}
+        "mois": [dict(chiffres(m), cle=cle, nom="%s %s" % (MOIS[int(cle[5:7]) - 1], cle[:4]))
                  for cle, m in sorted(mois.items(), reverse=True)],
         "impressions": [{"id": identifiant(en), "date": en["date"], "projet": en["projet"],
-                         "secondes": en.get("secondes") or 0, "part": part(en), "cout": cout(en),
+                         "secondes": round(temps(en)), "part": part(en), "cout": cout(en),
                          "en_cours": en_cours.get(en.get("tache")) if en.get("etat", "lancee") == "lancee" else None,
-                         "fils": [{"couleur": f["couleur"], "g": round(f["g"] * part(en), 2)} for f in en["fils"]]}
+                         "imprimante": imprimante_de(en, memoire) or "", "source": en.get("source", "studio"),
+                         "a_completer": bool(en.get("a_completer")),
+                         "fils": [{"couleur": f["couleur"], "nom": nom_couleur(f["couleur"]), "type": f["type"],
+                                   "g": round(f["g"] * part(en), 2), "pese": f["g"],
+                                   "bobine": f["bobine"] if f.get("bobine") in bobines else ""}
+                                  for f in en["fils"]]}
                         for en in reversed(journal[-300:])],
         "alertes": list(reversed(lire_alertes(donnees))),
         "marques": marques_proposees(donnees),
         "types": TYPES,
         "local": local,
+        "site": SITE,
+        "version": version_installee(),
+        "maj": nouveautes.annonce() if nouveautes else None,
+        "lecture_carte": reglages["carte"],
     }
     if local:  # les réglages ne se voient et ne se changent que depuis l'ordinateur lui-même
-        reglages, adresse = lire_reglages(donnees), adresse_locale()
-        etat["reglages"] = {"reseau": reglages["reseau"], "code": reglages["code"],
-                            "adresse": "http://%s:%d/" % (adresse, port) if adresse else None}
+        adresse = adresse_locale()
+        etat["reglages"] = {"reseau": reglages["reseau"], "code": reglages["code"], "seuil": reglages["seuil"],
+                            "fin": reglages["fin"], "carte": reglages["carte"],
+                            "adresse": "http://%s:%d/" % (adresse, port) if adresse else None,
+                            "imprimantes": parc.reglages() if parc else None}
     return etat
 
 
@@ -757,6 +1118,39 @@ def nombre_saisi(champs, nom, maxi, entier=False):
     return True, int(valeur) if entier else round(valeur, 2)
 
 
+def fils_saisis(texte, bobines):
+    """Les fils saisis sur la page pour une impression : [{couleur, type, g, bobine}], ou None si la saisie ne tient pas.
+
+    Chaque ligne désigne une bobine suivie, ou à défaut une couleur et un type de fil.
+    """
+    try:
+        lignes = json.loads(texte)
+    except ValueError:
+        return None
+    if not isinstance(lignes, list) or len(lignes) > 16:
+        return None
+    fils = []
+    for ligne in lignes:
+        if not isinstance(ligne, dict):
+            return None
+        try:
+            grammes = round(float(str(ligne.get("g", 0)).replace(",", ".")), 2)
+        except ValueError:
+            return None
+        if not 0 <= grammes <= 20000:
+            return None
+        ident = str(ligne.get("bobine") or "")
+        if ident in bobines:
+            fil = {"couleur": bobines[ident]["couleur"], "type": bobines[ident]["type"], "bobine": ident}
+        else:
+            choisie = bobine_demandee({"couleur": str(ligne.get("couleur", "")), "type": str(ligne.get("type", ""))})
+            if not choisie:
+                return None
+            fil = {"couleur": choisie[0], "type": choisie[1]}
+        fils.append(dict(fil, g=grammes))
+    return fils
+
+
 class Serveur(ThreadingHTTPServer):
     # Sous Windows, cette option laisserait deux exemplaires écouter sur le même port.
     allow_reuse_address = not WINDOWS
@@ -769,7 +1163,7 @@ class Serveur(ThreadingHTTPServer):
         self.server_name, self.server_port = "127.0.0.1", self.server_address[1]
 
 
-def lancer_serveur(donnees, port, parc=None, reseau=False):
+def lancer_serveur(donnees, port, parc=None, reseau=False, nouveautes=None):
     """Sert la page. Avec `reseau`, les appareils du même réseau y accèdent aussi, après avoir donné le code."""
     essais = {}  # adresse → heures des codes faux, pour freiner qui en essaierait beaucoup
 
@@ -818,10 +1212,13 @@ def lancer_serveur(donnees, port, parc=None, reseau=False):
         def json(self, code, valeur):
             self.repondre(code, json.dumps(valeur, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
 
+        def bon(self, reussi=True, **plus):
+            self.json(200 if reussi else 400, dict(plus, ok=bool(reussi)))
+
         def fichier(self, chemin, type_mime, cache="no-store"):
             try:
-                with open(chemin, "rb") as f:
-                    self.repondre(200, f.read(), type_mime, cache)
+                with open(chemin, "rb") as fichier:
+                    self.repondre(200, fichier.read(), type_mime, cache)
             except OSError:
                 self.repondre(500, "Il manque un fichier de BlokBambu : relancez l'installation.".encode("utf-8"))
 
@@ -838,7 +1235,7 @@ def lancer_serveur(donnees, port, parc=None, reseau=False):
                 else:
                     self.repondre(303, b"", entetes=[("Location", "/code")])
             elif chemin == "/api/etat":
-                self.json(200, etat_page(donnees, parc, self.local(), port))
+                self.json(200, etat_page(donnees, parc, self.local(), port, nouveautes))
             elif chemin == "/saut.js":
                 self.repondre(200, b'location.replace("http://127.0.0.1:%d/");' % port, "text/javascript")
             elif chemin == "/code":
@@ -858,77 +1255,201 @@ def lancer_serveur(donnees, port, parc=None, reseau=False):
                 return self.entrer(champs)
             if not self.connecte():
                 return self.repondre(403, b"refuse")
-            if self.path == "/reglages":
-                return self.regler(champs)
+            if self.path == "/reglages" or self.path.startswith("/imprimante"):
+                if not self.local():  # réglages et imprimantes : depuis l'ordinateur lui-même seulement
+                    return self.repondre(403, b"refuse")
+                return self.regler(champs) if self.path == "/reglages" else self.imprimante(champs)
             if self.path == "/alerte/fermer":
                 with verrou_alertes:
                     ecrire_json(donnees, "alertes.json", [a for a in lire_alertes(donnees)
                                                           if champs.get("id") not in (a.get("id"), "toutes")])
-                return self.json(200, {"ok": True})
+                return self.bon()
+            if self.path == "/impression/ajouter":
+                return self.ajouter_impression(champs)
             if self.path in ("/impression", "/impression/supprimer"):
                 return self.corriger(champs)
-            bobine = bobine_demandee(champs)
-            if not bobine or self.path not in ("/bobine", "/bobine/modifier", "/retirer"):
-                return self.json(400, {"ok": False})
-            cle = "%s|%s" % bobine
+            if self.path in ("/bobine", "/bobine/modifier", "/retirer"):
+                return self.bobine(champs)
+            self.bon(False)
+
+        # ----- bobines
+
+        def bobine(self, champs):
+            """Ajoute une bobine, la remplace par une neuve, la modifie ou cesse de la suivre."""
+            ident = champs.get("id", "")
             bon_prix, prix = nombre_saisi(champs, "prix", 1000)
             bonne_reserve, reserve = nombre_saisi(champs, "reserve", 99, entier=True)
             bon_poids, grammes = nombre_saisi(champs, "poids", 20000)
             marque = " ".join(champs.get("marque", "").split())[:40]
+            emplacement = champs.get("emplacement", "")
             with verrou:
                 bobines = lire_bobines(donnees)
                 if self.path == "/retirer":
-                    bobines.pop(cle, None)
-                elif not bon_prix or not bonne_reserve:
-                    return self.json(400, {"ok": False})
+                    if bobines.pop(ident, None) is None:
+                        return self.bon(False)
+                elif not bon_prix or not bonne_reserve or not re.fullmatch(EMPLACEMENT, emplacement):
+                    return self.bon(False)
                 elif self.path == "/bobine/modifier":
-                    if cle not in bobines:
-                        return self.json(400, {"ok": False})
-                    bobines[cle].update(marque=marque, prix=prix or None, reserve=reserve)
+                    if ident not in bobines:
+                        return self.bon(False)
+                    bobines[ident].update(marque=marque, prix=prix or None, reserve=reserve)
+                    poser_bobine(bobines, ident, emplacement)
                     # Le prix corrigé vaut pour toutes les impressions faites avec cette bobine.
                     journal = lire_journal(donnees)
                     for entree in journal:
-                        if entree["date"] >= bobines[cle]["depuis"] and any(cle_fil(f) == cle for f in entree["fils"]):
+                        if any(fil.get("bobine") == ident for fil in entree["fils"]):
                             poser_prix(entree, bobines)
                     ecrire_json(donnees, "impressions.json", journal)
                 else:
-                    if not bon_poids or not grammes:
-                        return self.json(400, {"ok": False})
-                    # Une bobine neuve repart de son poids : seules les impressions suivantes s'en déduisent.
-                    bobines[cle] = {"couleur": bobine[0], "type": bobine[1], "marque": marque, "poids": grammes,
-                                    "prix": prix or None, "reserve": reserve,
-                                    "depuis": datetime.now().isoformat(timespec="seconds")}
+                    choisie = bobine_demandee(champs)
+                    if not choisie or not bon_poids or not grammes:
+                        return self.bon(False)
+                    # Une bobine neuve part de son poids : seules les impressions suivantes s'en déduisent.
+                    # Celle qu'elle remplace n'est plus suivie ; ses impressions gardent leur coût.
+                    bobines.pop(champs.get("remplace", ""), None)
+                    ident = secrets.token_hex(4)
+                    bobines[ident] = {"couleur": choisie[0], "type": choisie[1], "marque": marque, "poids": grammes,
+                                      "prix": prix or None, "reserve": reserve,
+                                      "depuis": datetime.now().isoformat(timespec="seconds")}
+                    poser_bobine(bobines, ident, emplacement)
                 if marque and marque not in marques_proposees(donnees):  # une marque nouvelle est retenue
                     ecrire_json(donnees, "marques.json", lire(donnees, "marques.json", []) + [marque])
                 ecrire_json(donnees, "bobines.json", bobines)
-            self.json(200, {"ok": True})
+            self.bon(id=ident)
+
+        # ----- impressions
 
         def corriger(self, champs):
-            """Corrige la part imprimée d'une impression, ou la retire du compte."""
+            """Corrige une impression (part faite, imprimante, bobines, grammes à compléter) ou la retire du compte."""
             bonne_part, pourcent = nombre_saisi(champs, "part", 100)
+            machine = champs.get("imprimante", "")
             with verrou:
-                journal = lire_journal(donnees)
+                journal, bobines = lire_journal(donnees), lire_bobines(donnees)
                 entree = next((e for e in comptees(journal) if identifiant(e) == champs.get("id")), None)
-                if not entree or (self.path == "/impression" and (not bonne_part or pourcent is None)):
-                    return self.json(400, {"ok": False})
-                if self.path == "/impression":
-                    entree["part"], entree["corrigee"] = round(pourcent / 100, 4), True
-                else:
+                if not entree:
+                    return self.bon(False)
+                if self.path == "/impression/supprimer":
                     entree["supprimee"] = True  # gardée, pour ne pas être recomptée si son fichier est relu
+                else:
+                    fils = fils_saisis(champs["fils"], bobines) if "fils" in champs else []
+                    if not bonne_part or pourcent is None or fils is None or (machine and machine not in imprimantes_gardees(donnees)):
+                        return self.bon(False)
+                    if round(pourcent / 100, 4) != round(part(entree), 4):
+                        entree["part"], entree["corrigee"] = round(pourcent / 100, 4), True
+                    if machine and machine != imprimante_de(entree, imprimantes_gardees(donnees)):
+                        entree["imprimante"], entree["imprimante_choisie"] = machine, True
+                    if "fils" in champs and not self.poser_fils(entree, fils, bobines):
+                        return self.bon(False)
+                    poser_prix(entree, bobines)
                 ecrire_json(donnees, "impressions.json", journal)
-            self.json(200, {"ok": True})
+            self.bon()
+
+        def poser_fils(self, entree, fils, bobines):
+            """Les fils saisis sur la page. Une impression lue dans un fichier garde ses grammes : seule
+            la bobine de chaque fil se choisit. Les autres (ajoutée à la main, lancée ailleurs) se saisissent en entier."""
+            if entree.get("source") in ("main", "imprimante"):
+                peses = [fil for fil in fils if fil["g"] > 0]
+                if not peses:
+                    return entree.get("source") == "imprimante" and bool(entree.get("a_completer"))
+                entree["fils"] = [dict(fil, nom="", m=metres(fil["g"], fil["type"]), bobine_choisie=True) for fil in peses]
+                entree.pop("a_completer", None)
+                return True
+            if len(fils) != len(entree["fils"]):
+                return False
+            for ancien, saisi in zip(entree["fils"], fils):
+                if saisi.get("bobine") == (ancien.get("bobine") if ancien.get("bobine") in bobines else None):
+                    continue  # rien de changé ; une bobine remplacée depuis reste notée sur le fil, avec son prix
+                if saisi.get("bobine"):
+                    if cle_fil(saisi) != cle_fil(ancien):
+                        ancien.setdefault("projet", {"couleur": ancien["couleur"], "type": ancien["type"]})
+                    ancien.update(couleur=saisi["couleur"], type=saisi["type"], bobine=saisi["bobine"])
+                else:
+                    ancien.pop("bobine", None)
+                ancien["bobine_choisie"] = True
+            return True
+
+        def ajouter_impression(self, champs):
+            """Une impression notée à la main : celle qu'aucun fichier de Bambu Studio n'a annoncée."""
+            projet = " ".join(champs.get("projet", "").split())[:80]
+            bonne_duree, minutes = nombre_saisi(champs, "minutes", 60 * 24 * 30, entier=True)
+            machine = champs.get("imprimante", "")
+            try:
+                date = datetime.strptime(champs.get("date", "")[:16], "%Y-%m-%dT%H:%M")
+            except ValueError:
+                date = None
+            with verrou:
+                bobines, memoire = lire_bobines(donnees), imprimantes_gardees(donnees)
+                fils = [fil for fil in fils_saisis(champs.get("fils", ""), bobines) or [] if fil["g"] > 0]
+                if (not projet or not date or date > datetime.now() + timedelta(days=1) or not bonne_duree or not fils
+                        or (machine and machine not in memoire)):
+                    return self.bon(False)
+                entree = {"cle": "main|" + secrets.token_hex(8), "date": date.isoformat(timespec="seconds"),
+                          "projet": projet, "fichier": "", "etat": "terminee", "source": "main",
+                          "secondes": (minutes or 0) * 60,
+                          "fils": [dict(fil, nom="", m=metres(fil["g"], fil["type"]), bobine_choisie=True) for fil in fils]}
+                seules = [r for r, _ in suivies(memoire)] if parc else []
+                if machine:
+                    entree["imprimante"], entree["imprimante_choisie"] = machine, True
+                elif len(seules) == 1:
+                    entree["imprimante"] = seules[0]
+                poser_prix(entree, bobines)
+                journal = lire_journal(donnees) + [entree]
+                journal.sort(key=lambda e: e["date"])
+                ecrire_json(donnees, "impressions.json", journal)
+            self.bon(id=identifiant(entree))
+
+        # ----- réglages et imprimantes, depuis l'ordinateur lui-même
 
         def regler(self, champs):
-            if not self.local():
-                return self.repondre(403, b"refuse")
+            bon_seuil, seuil = nombre_saisi(champs, "seuil", 5000, entier=True)
+            if not bon_seuil:
+                return self.bon(False)
             with verrou:
                 reglages = lire_reglages(donnees)
-                reglages["reseau"] = champs.get("reseau") == "1"
-                if reglages["reseau"] and not reglages["code"]:
-                    reglages["code"] = "%06d" % secrets.randbelow(10 ** 6)
-                    reglages["secret"] = secrets.token_hex(16)
+                if "reseau" in champs:
+                    reglages["reseau"] = champs["reseau"] == "1"
+                    if reglages["reseau"] and not reglages["code"]:
+                        reglages["code"] = "%06d" % secrets.randbelow(10 ** 6)
+                        reglages["secret"] = secrets.token_hex(16)
+                if seuil is not None:
+                    reglages["seuil"] = seuil
+                for nom in ("fin", "carte"):
+                    if nom in champs:
+                        reglages[nom] = champs[nom] == "1"
                 ecrire_json(donnees, "reglages.json", reglages)
-            self.json(200, {"ok": True})
+            self.bon()
+
+        def imprimante(self, champs):
+            """Nommer une imprimante, cesser de la suivre, la reprendre, en ajouter une à la main."""
+            if not parc:
+                return self.bon(False)
+            repere, nom = champs.get("id", ""), " ".join(champs.get("nom", "").split())[:24]
+            if self.path == "/imprimante":
+                return self.bon(parc.renommer(repere, nom))
+            if self.path == "/imprimante/retirer":
+                return self.bon(parc.retirer(repere))
+            if self.path == "/imprimante/suivre":
+                return self.bon(parc.reprendre(repere))
+            if self.path != "/imprimante/ajouter":
+                return self.bon(False)
+            adresse, code = adresse_saisie(champs.get("adresse", "")), champs.get("code", "").strip()
+            if not adresse:
+                return self.bon(False, erreur="Cette adresse n'est pas celle d'un appareil du réseau local. "
+                                              "Elle ressemble à 192.168.1.42.")
+            if not re.fullmatch(r"[A-Za-z0-9]{4,32}", code):
+                return self.bon(False, erreur="Le code d'accès se compose de chiffres et de lettres, sans espace.")
+            try:
+                parc.ajouter(adresse, code, nom)
+            except Refus:
+                erreur = "L'imprimante refuse ce code d'accès. Vérifiez-le sur son écran."
+            except (AutreAppareil, ssl.SSLError):
+                erreur = "L'appareil à cette adresse n'est pas reconnu comme une imprimante Bambu Lab."
+            except (OSError, ValueError, struct.error) as e:
+                erreur = (ETATS_IMPRIMANTE["bloquee"] if MAC and getattr(e, "errno", None) == 65 else
+                          "Imprimante injoignable à cette adresse. Est-elle allumée, et sur le même réseau que cet ordinateur ?")
+            else:
+                return self.bon()
+            self.bon(False, erreur=erreur)
 
         def entrer(self, champs):
             """Un appareil du réseau donne le code : cinq essais faux par quart d'heure, pas plus."""
@@ -1075,46 +1596,353 @@ class Flux:
         raise ConnectionError("paquet illisible")
 
 
+def nom_tache(nom):
+    """Le nom d'une impression tel que l'imprimante l'annonce, sans dossier, extension ni numéro de plateau."""
+    nom = str(nom or "").replace("\\", "/").rsplit("/", 1)[-1]
+    nom = re.sub(r"\.(gcode\.3mf|3mf|gcode)$", "", nom, flags=re.I)
+    return re.sub(r"_plate_\d+$", "", nom) or "Impression"
+
+
+def lire_acces(donnees):
+    """{repère: {adresse, code}} des imprimantes ajoutées à la main. C'est le seul fichier de BlokBambu
+    où un code d'accès est écrit ; il ne quitte pas cet ordinateur et la page ne le montre jamais."""
+    a = lire(donnees, "acces.json", {})
+    if not isinstance(a, dict):
+        return {}
+    return {r: fiche for r, fiche in a.items() if isinstance(fiche, dict) and fiche.get("code") and fiche.get("adresse")}
+
+
+def ecrire_acces(donnees, acces):
+    chemin = os.path.join(donnees, "acces.json")
+    provisoire = chemin + ".tmp"
+    try:
+        os.remove(provisoire)
+    except OSError:
+        pass
+    # Lisible par la seule personne de cette session, dès sa création.
+    with os.fdopen(os.open(provisoire, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w", encoding="utf-8") as fichier:
+        json.dump(acces, fichier, indent=1)
+    os.replace(provisoire, chemin)
+
+
+def adresse_saisie(texte):
+    """(hôte, port) d'une adresse d'imprimante saisie à la main : une adresse du réseau local, rien d'autre."""
+    hote, _, port = str(texte or "").strip().partition(":")
+    try:
+        ip = ipaddress.ip_address(hote)
+        port = int(port) if port else 8883
+    except ValueError:
+        return None
+    if ip.version != 4 or not ip.is_private or ip.is_unspecified or not 0 < port < 65536:
+        return None
+    return str(ip), port
+
+
+def contexte_bambu(ac=None):
+    """Ne fait confiance qu'aux certificats de Bambu Lab : ceux livrés ici, et celui de Bambu Studio s'il est installé."""
+    contexte = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    contexte.check_hostname = False  # le certificat porte le numéro de série, pas l'adresse
+    if ac:
+        contexte.load_verify_locations(ac)
+    else:
+        contexte.load_verify_locations(cadata=AC_BAMBU)
+        for certificat in certificats_installes():
+            try:
+                contexte.load_verify_locations(certificat)
+            except (OSError, ssl.SSLError):
+                pass
+    return contexte
+
+
+def serie_du_certificat(liaison):
+    return dict(x[0] for x in liaison.getpeercert().get("subject", ())).get("commonName") or ""
+
+
+def ouvrir_liaison(hote, port, code, client, ac=None, attendue=None, delai=25):
+    """Joint une imprimante et lui présente le code d'accès. Rend (liaison, flux, numéro de série).
+
+    Le certificat doit venir de Bambu Lab. `attendue` dit quelle imprimante on veut (numéro de série
+    ou repère) : à une autre, le code n'est pas présenté.
+    """
+    # Une imprimante occupée met parfois plus de dix secondes à établir la liaison chiffrée.
+    liaison = contexte_bambu(ac).wrap_socket(socket.create_connection((hote, port), timeout=delai))
+    try:
+        serie = serie_du_certificat(liaison)
+        if not serie or (attendue and attendue not in (serie, repere_de(serie))):
+            raise AutreAppareil()
+        liaison.sendall(paquet_mqtt(0x10, chaine_mqtt("MQTT") + bytes([4, 0xC2]) + struct.pack("!H", 60)
+                                    + chaine_mqtt(client) + chaine_mqtt("bblp") + chaine_mqtt(code)))
+        flux = Flux(liaison)
+        reponse = flux.paquet()
+        if not reponse or reponse[0] != 0x20 or len(reponse[1]) < 2:
+            raise ConnectionError("pas de réponse de l'imprimante")
+        if reponse[1][1] != 0:
+            raise Refus("code d'accès refusé")
+        return liaison, flux, serie
+    except BaseException:
+        liaison.close()
+        raise
+
+
+class Carte(ftplib.FTP_TLS):
+    """La carte mémoire d'une imprimante, pour y lire : FTP chiffré dès la connexion, comme Bambu Studio.
+
+    Aucune commande d'écriture n'est écrite ici : ni envoi, ni suppression, ni renommage.
+    """
+
+    def connect(self, host, port, timeout):
+        self.host, self.port, self.timeout = host, port, timeout
+        brut = socket.create_connection((host, port), timeout)
+        self.af = brut.family
+        self.sock = self.context.wrap_socket(brut)
+        self.file = self.sock.makefile("r", encoding=self.encoding)
+        self.welcome = self.getresp()
+        return self.welcome
+
+    def ntransfercmd(self, cmd, rest=None):
+        conn, taille = ftplib.FTP.ntransfercmd(self, cmd, rest)
+        return self.context.wrap_socket(conn, session=self.sock.session), taille  # même session chiffrée que les commandes
+
+    def taille(self, chemin):
+        """Taille d'un fichier, ou None s'il n'existe pas."""
+        try:
+            return int(self.sendcmd("SIZE " + chemin).split()[-1])
+        except (ftplib.error_perm, ValueError, IndexError):
+            return None
+
+    def lire(self, chemin):
+        self.voidcmd("TYPE I")
+        conn, _ = self.ntransfercmd("RETR " + chemin)
+        recu = bytearray()
+        try:
+            while True:
+                bloc = conn.recv(65536)
+                if not bloc:
+                    break
+                recu += bloc
+            try:  # fin propre du canal chiffré : sans elle, l'imprimante garde son service de fichiers occupé plusieurs minutes
+                conn.unwrap()
+            except (OSError, ValueError):
+                pass
+        finally:
+            conn.close()
+        self.voidresp()
+        return bytes(recu)
+
+
+def chemins_carte(nom, fichier):
+    """Où peut se trouver, sur la carte, le fichier d'une impression d'après ce que l'imprimante en annonce."""
+    chemins = []
+    if nom:
+        chemins += ["/cache/%s.3mf" % nom, "/cache/%s.gcode.3mf" % nom, "/%s.3mf" % nom, "/%s.gcode.3mf" % nom]
+    if fichier.lower().endswith(".3mf"):
+        relatif = re.sub(r"^/?(mnt/)?sdcard/", "", fichier.replace("\\", "/")).lstrip("/")
+        chemins += ["/" + relatif, "/cache/" + relatif.rsplit("/", 1)[-1]]
+    return [c for c in dict.fromkeys(chemins) if "\r" not in c and "\n" not in c and ".." not in c]
+
+
+def lire_carte(hote, port, code, serie, nom, fichier, ac=None, maxi=40 * 2 ** 20):
+    """Lit sur la carte de l'imprimante le fichier de l'impression qu'elle annonce sous ce nom.
+
+    Rend ce qu'il dit — grammes par fil, durée prévue — et `bacs` : {numéro du fil: emplacement},
+    quand l'imprimante l'a noté. None si le fichier n'y est pas ou pèse trop lourd.
+    """
+    carte = Carte(context=contexte_bambu(ac))
+    carte.connect(hote, port, 25)
+    try:
+        if serie_du_certificat(carte.sock) != serie:  # le code n'est présenté qu'à l'imprimante attendue
+            raise AutreAppareil()
+        carte.login("bblp", code)
+        carte.prot_p()
+        for chemin in chemins_carte(nom, fichier):
+            taille = carte.taille(chemin)
+            if taille is None:
+                continue
+            if taille > maxi:
+                return None
+            with zipfile.ZipFile(io.BytesIO(carte.lire(chemin))) as z:
+                noms = set(z.namelist())
+                if "Metadata/slice_info.config" not in noms:
+                    return None
+                plateau = re.search(r"plate_(\d+)\.gcode$", fichier)
+                envoi = envoi_de(ET.fromstring(z.read("Metadata/slice_info.config")), noms, [],
+                                 plateau.group(1) if plateau else None)
+            if not envoi:
+                return None
+            envoi["bacs"] = {}
+            dossier = chemin.rsplit("/", 1)[0]
+            note = "%s/%d_%s.bbl" % (dossier, envoi["plateaux"][0], nom)
+            if nom and (carte.taille(note) or maxi) < 65536:  # la note que l'imprimante garde de chaque impression
+                try:
+                    emplacements = json.loads(carte.lire(note).decode("utf-8", "replace")).get("ams mapping") or []
+                except ValueError:
+                    emplacements = []
+                for rang, bac in enumerate(emplacements):
+                    if isinstance(bac, int) and 0 <= bac < 16:
+                        envoi["bacs"][rang + 1] = "%d-%d" % (bac // 4, bac % 4)
+                    elif bac == 254:
+                        envoi["bacs"][rang + 1] = EXTERNE
+            return envoi
+        return None
+    finally:
+        try:
+            carte.quit()
+        except Exception:
+            carte.close()
+
+
 class Parc:
-    """Les imprimantes connues de Bambu Studio : une écoute par imprimante."""
+    """Les imprimantes suivies — celles que Bambu Studio connaît, celles ajoutées à la main —, une écoute chacune."""
 
     def __init__(self, donnees, fenetres, conf=None, ac=None, adresses=None, delais=(STABILISATION, REMPLACEMENT)):
         self.donnees, self.fenetres, self.conf, self.ac = donnees, fenetres, conf, ac
         self.adresses = adresses or {}  # essais : {numéro de série ou "*": (hôte, port)}
         self.stabilisation, self.remplacement = delais
-        self.imprimantes = {}  # numéro de série → Imprimante
-        self.memoire = lire(donnees, "imprimantes.json", {})
+        self.attente_studio = min(ATTENTE_STUDIO, 6 * self.stabilisation)
+        self.port_carte = 990  # la carte mémoire des imprimantes se lit par là
+        self.imprimantes = {}  # repère → Imprimante écoutée
+        self.connues = {}      # repère → numéro de série, pour celles que Bambu Studio connaît
+        self.memoire = imprimantes_gardees(donnees)
         self.reprise = lire(donnees, "imprimante.json", None)  # mémoire d'avant, quand il n'y en avait qu'une
-        self.ecriture = threading.Lock()
+        self.ecriture = threading.RLock()  # la mémoire est lue et écrite par les écoutes et par la page
 
-    def code(self, serie):
-        return acces_imprimantes(self.conf or conf_bambu()).get(serie)
+    def code(self, imprimante):
+        """Le code d'accès : celui saisi ici pour une imprimante ajoutée à la main, sinon celui de Bambu Studio."""
+        saisi = lire_acces(self.donnees).get(imprimante.repere)
+        if saisi:
+            return saisi["code"]
+        return acces_imprimantes(self.conf or conf_bambu()).get(imprimante.serie) if imprimante.serie else None
 
     def actualiser(self):
-        """Lance l'écoute des imprimantes que Bambu Studio connaît et qu'on n'écoute pas encore."""
-        for serie in acces_imprimantes(self.conf or conf_bambu()):
-            if serie not in self.imprimantes:
-                imprimante = Imprimante(self, len(self.imprimantes) + 1, serie)
-                self.imprimantes[serie] = imprimante
+        """Écoute les imprimantes à suivre qu'on n'écoutait pas encore, cesse d'écouter celles qui ne le sont plus."""
+        with self.ecriture:
+            self.connues = {repere_de(s): s for s in acces_imprimantes(self.conf or conf_bambu())}
+            voulues = dict.fromkeys(list(self.connues) + list(lire_acces(self.donnees)))
+            change = False
+            for repere in voulues:
+                fiche = self.memoire.get(repere)
+                if fiche is None or "numero" not in fiche:
+                    numero = max([m.get("numero", 0) for m in self.memoire.values()] + [0]) + 1
+                    ancienne = self.reprise if numero == 1 and isinstance(self.reprise, dict) else {}
+                    fiche = self.memoire[repere] = dict(ancienne, **dict(fiche or {}, numero=numero))
+                    change = True
+                if fiche.get("retiree") or repere in self.imprimantes:
+                    continue
+                self.imprimantes[repere] = Imprimante(self, fiche["numero"], repere, self.connues.get(repere))
+                self.imprimantes[repere].start()
+                change = True
+            for repere in [r for r in self.imprimantes if r not in voulues or self.memoire[r].get("retiree")]:
+                self.imprimantes.pop(repere).arret.set()
+                change = True
+            if change:
                 self.garder()
-                imprimante.start()
-
-    def liste(self):
-        return sorted(self.imprimantes.values(), key=lambda i: i.numero)
 
     def garder(self):
+        """Écrit la mémoire : ce que sait chaque imprimante écoutée, et lesquelles sont suivies."""
         with self.ecriture:
-            self.memoire = {i.repere: {"numero": i.numero, "ip": i.ip, "emplacements": i.emplacements}
-                            for i in self.liste()}
+            for repere, fiche in self.memoire.items():
+                imprimante = self.imprimantes.get(repere)
+                fiche["suivie"] = imprimante is not None
+                if imprimante:
+                    fiche.update(ip=imprimante.ip, emplacements=imprimante.emplacements)
             ecrire_json(self.donnees, "imprimantes.json", self.memoire)
 
-    def etats(self):
-        plusieurs = len(self.imprimantes) > 1
-        return [{"nom": "Imprimante %d" % i.numero if plusieurs else "Imprimante", "etat": i.etat} for i in self.liste()]
+    def nom(self, repere):
+        with self.ecriture:
+            return nom_imprimante(self.memoire, repere)
 
-    def en_cours(self):
-        """{tâche: avancement en %} des impressions que les imprimantes sont en train de faire."""
-        return {i.tache["ident"]: i.tache["percent"] for i in self.liste() if i.tache}
+    def places(self):
+        """Les emplacements de toutes les imprimantes suivies, tels qu'elles les annoncent en ce moment."""
+        with self.ecriture:
+            return emplacements_connus(suivies(self.memoire))
+
+    def etats(self):
+        """Ce que fait chaque imprimante écoutée : {repère: {etat, tache}}."""
+        etats = {}
+        for repere, imprimante in list(self.imprimantes.items()):
+            t = imprimante.tache
+            etats[repere] = {"etat": imprimante.etat, "entendue": "gcode_state" in imprimante.vue, "tache": t and {
+                "ident": t["ident"], "percent": t["percent"], "pause": t["etat"] == "PAUSE",
+                "nom": str(imprimante.vue.get("subtask_name") or imprimante.vue.get("gcode_file") or "")}}
+        return etats
+
+    def reglages(self):
+        """Ce que les réglages de la page montrent des imprimantes. Jamais un code d'accès."""
+        with self.ecriture:
+            manuelles, liste = lire_acces(self.donnees), []
+            for repere, fiche in sorted(self.memoire.items(), key=lambda x: x[1].get("numero", 0)):
+                imprimante = self.imprimantes.get(repere)
+                if not imprimante and not (fiche.get("retiree") and repere in self.connues):
+                    continue  # ni suivie, ni possible à reprendre d'un clic
+                sans_nom = dict(self.memoire, **{repere: {k: v for k, v in fiche.items() if k != "nom"}})
+                liste.append({"id": repere, "nom": fiche.get("nom") or "", "defaut": nom_imprimante(sans_nom, repere),
+                              "suivie": imprimante is not None,
+                              "etat": ETATS_COURTS.get(imprimante.etat, "") if imprimante else "",
+                              "adresse": manuelles[repere]["adresse"].replace(":8883", "") if repere in manuelles else ""})
+            return liste
+
+    def renommer(self, repere, nom):
+        with self.ecriture:
+            if repere not in self.memoire:
+                return False
+            if nom:
+                self.memoire[repere]["nom"] = nom
+            else:
+                self.memoire[repere].pop("nom", None)
+            self.garder()
+            return True
+
+    def retirer(self, repere):
+        """Cesse de suivre une imprimante. Le code saisi ici pour elle est effacé ; ses impressions restent."""
+        with self.ecriture:
+            if repere not in self.memoire:
+                return False
+            self.memoire[repere]["retiree"] = True
+            acces = lire_acces(self.donnees)
+            if acces.pop(repere, None):
+                ecrire_acces(self.donnees, acces)
+            self.actualiser()
+            self.garder()
+            return True
+
+    def reprendre(self, repere):
+        with self.ecriture:
+            if repere not in self.memoire:
+                return False
+            self.memoire[repere].pop("retiree", None)
+            self.actualiser()
+            self.garder()
+            return True
+
+    def ajouter(self, adresse, code, nom):
+        """Ajoute une imprimante à la main, après l'avoir jointe : son certificat dit laquelle c'est."""
+        hote, port = adresse
+        liaison, _, serie = ouvrir_liaison(hote, port, code, "blokbambu-%d-ajout" % os.getpid(), self.ac, delai=20)
+        liaison.close()
+        repere = repere_de(serie)
+        with self.ecriture:
+            acces = lire_acces(self.donnees)
+            acces[repere] = {"adresse": "%s:%d" % (hote, port), "code": code}
+            ecrire_acces(self.donnees, acces)
+            fiche = self.memoire.setdefault(repere, {})
+            fiche.pop("retiree", None)
+            if nom:
+                fiche["nom"] = nom
+            deja = self.imprimantes.pop(repere, None)  # déjà écoutée avec le code de Bambu Studio : elle repart avec celui-ci
+            if deja:
+                deja.arret.set()
+            self.actualiser()
+            self.garder()
+        print("imprimante ajoutée à la main :", self.nom(repere), flush=True)
+        return repere
+
+    def adresse_trouvee(self, repere, hote, port):
+        """Une imprimante ajoutée à la main a changé d'adresse sur le réseau : la nouvelle est retenue."""
+        with self.ecriture:
+            acces = lire_acces(self.donnees)
+            if repere in acces and acces[repere]["adresse"] != "%s:%d" % (hote, port):
+                acces[repere]["adresse"] = "%s:%d" % (hote, port)
+                ecrire_acces(self.donnees, acces)
 
 
 class Imprimante(threading.Thread):
@@ -1126,18 +1954,20 @@ class Imprimante(threading.Thread):
 
     EN_COURS = ("PREPARE", "RUNNING", "PAUSE", "SLICING")
 
-    def __init__(self, parc, numero, serie):
+    def __init__(self, parc, numero, repere, serie=None):
         super().__init__(daemon=True)
-        self.parc, self.numero, self.serie = parc, numero, serie
-        self.repere = hashlib.sha1(serie.encode("utf-8")).hexdigest()[:10]  # le numéro de série n'est pas gardé
-        memoire = parc.memoire.get(self.repere) or (parc.reprise if numero == 1 else None) or {}
+        # Le numéro de série n'est gardé qu'en mémoire vive : Bambu Studio le donne, ou le certificat de l'imprimante.
+        self.parc, self.numero, self.repere, self.serie = parc, numero, repere, serie
+        memoire = parc.memoire.get(repere) or {}
         self.ip = memoire.get("ip")
         self.emplacements = memoire.get("emplacements") or {}  # "0-1" → {present, couleur, type, …}
         self.attente = {}    # emplacement → {depart : présence avant le premier changement, dernier : heure}
         self.etat = "recherche"
         self.vue = {}        # ce que l'imprimante a annoncé de l'impression, messages partiels réunis
-        self.tache = None    # l'impression en cours : {ident, percent, bacs, liee, debut}
+        self.tache = None    # l'impression en cours : {ident, percent, bacs, liee, debut, direct, etat, actif, vu}
         self.bac_actif = None
+        self.dernier = 0.0   # heure du dernier départ ou de la dernière fin d'impression vus sur cette imprimante
+        self.arret = threading.Event()  # levé quand l'imprimante n'est plus à suivre
 
     def noter(self, etat, detail=""):
         if etat != self.etat:
@@ -1145,14 +1975,15 @@ class Imprimante(threading.Thread):
         self.etat = etat
 
     def designation(self, cle):
-        plusieurs = len(self.parc.imprimantes) > 1
-        return ("Imprimante %d, emplacement %s" if plusieurs else "%.0sEmplacement %s") % (self.numero, nom_emplacement(cle))
+        if len(self.parc.imprimantes) > 1:
+            return "%s, emplacement %s" % (self.parc.nom(self.repere), nom_emplacement(cle))
+        return "Emplacement %s" % nom_emplacement(cle)
 
     def run(self):
-        while True:
+        while not self.arret.is_set():
             pause = 30
             try:
-                code = self.parc.code(self.serie)
+                code = self.parc.code(self)
                 if not code:
                     self.noter("sans_code")
                     pause = 300
@@ -1162,20 +1993,25 @@ class Imprimante(threading.Thread):
                 self.noter("refusee", str(e))
                 pause = 300
             fin = time.time() + pause
-            while time.time() < fin:  # les changements en attente s'annoncent même liaison coupée
+            while time.time() < fin and not self.arret.is_set():  # les changements en attente s'annoncent même liaison coupée
                 self.verifier()
                 time.sleep(2)
 
     def joindre(self, code):
         """Essaie les adresses connues ; ne rend la main que lorsque la liaison tombe."""
+        saisie = adresse_saisie((lire_acces(self.parc.donnees).get(self.repere) or {}).get("adresse"))
         imposee = self.parc.adresses.get(self.serie) or self.parc.adresses.get("*")
-        if imposee:
+        if saisie:  # ajoutée à la main : son adresse, puis celles où Bambu Studio est relié, si elle en a changé
+            candidats = [saisie] + [(h, 8883) for h in ([] if self.parc.adresses else adresses_vues()) if h != saisie[0]]
+        elif imposee:
             candidats = [imposee]
         else:
             candidats = [(h, 8883) for h in dict.fromkeys(([self.ip] if self.ip else []) + adresses_vues())]
         if not candidats:
             self.noter("injoignable", "adresse inconnue : ouvrir Bambu Studio une fois")
         for hote, port in candidats:
+            if self.arret.is_set():
+                return
             try:
                 self.ecouter(hote, port, code)
             except AutreAppareil:
@@ -1188,38 +2024,18 @@ class Imprimante(threading.Thread):
             self.noter("injoignable", "imprimante introuvable aux adresses connues")
 
     def ecouter(self, hote, port, code):
-        contexte = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        contexte.check_hostname = False  # le certificat porte le numéro de série, pas l'adresse
-        if self.parc.ac:
-            contexte.load_verify_locations(self.parc.ac)
-        else:
-            contexte.load_verify_locations(cadata=AC_BAMBU)
-            for certificat in certificats_installes():
-                try:
-                    contexte.load_verify_locations(certificat)
-                except (OSError, ssl.SSLError):
-                    pass
-        # Une imprimante occupée met parfois plus de dix secondes à établir la liaison chiffrée.
-        with contexte.wrap_socket(socket.create_connection((hote, port), timeout=25)) as liaison:
-            sujet = dict(x[0] for x in liaison.getpeercert().get("subject", ()))
-            if sujet.get("commonName") != self.serie:
-                raise AutreAppareil()
-            liaison.sendall(paquet_mqtt(0x10, chaine_mqtt("MQTT") + bytes([4, 0xC2]) + struct.pack("!H", 60)
-                                        + chaine_mqtt("blokbambu-%d-%d" % (os.getpid(), self.numero))
-                                        + chaine_mqtt("bblp") + chaine_mqtt(code)))
-            flux = Flux(liaison)
-            reponse = flux.paquet()
-            if not reponse or reponse[0] != 0x20 or len(reponse[1]) < 2:
-                raise ConnectionError("pas de réponse de l'imprimante")
-            if reponse[1][1] != 0:
-                raise Refus("code d'accès refusé")
+        liaison, flux, serie = ouvrir_liaison(hote, port, code, "blokbambu-%d-%d" % (os.getpid(), self.numero),
+                                              self.parc.ac, self.serie or self.repere)
+        with liaison:
+            self.serie = serie
             if hote != self.ip:
                 self.ip = hote
                 self.parc.garder()
-            liaison.sendall(paquet_mqtt(0x82, struct.pack("!H", 1) + chaine_mqtt("device/%s/report" % self.serie) + b"\x00"))
+                self.parc.adresse_trouvee(self.repere, hote, port)
+            liaison.sendall(paquet_mqtt(0x82, struct.pack("!H", 1) + chaine_mqtt("device/%s/report" % serie) + b"\x00"))
             liaison.settimeout(5)
             entendu = ping = time.time()
-            while True:
+            while not self.arret.is_set():
                 recu = flux.paquet()
                 maintenant = time.time()
                 if recu:
@@ -1244,14 +2060,16 @@ class Imprimante(threading.Thread):
         p = donnees.get("print") if isinstance(donnees, dict) else None
         if not isinstance(p, dict):
             return
-        memoire = json.dumps(self.emplacements, sort_keys=True)
-        if isinstance(p.get("vt_tray"), dict):
-            self.lire_bac(EXTERNE, p["vt_tray"])
-        if isinstance(p.get("ams"), dict):
-            self.lire_ams(p["ams"])
-        if json.dumps(self.emplacements, sort_keys=True) != memoire:
-            self.parc.garder()
+        with self.parc.ecriture:  # la page lit ces emplacements depuis un autre fil d'exécution
+            memoire = json.dumps(self.emplacements, sort_keys=True)
+            if isinstance(p.get("vt_tray"), dict):
+                self.lire_bac(EXTERNE, p["vt_tray"])
+            if isinstance(p.get("ams"), dict):
+                self.lire_ams(p["ams"])
+            if json.dumps(self.emplacements, sort_keys=True) != memoire:
+                self.parc.garder()
         try:
+            self.noter_bac()
             self.suivre_impression(p)
         except (KeyError, TypeError, ValueError) as e:
             print("impression mal comprise :", repr(e), flush=True)
@@ -1305,13 +2123,12 @@ class Imprimante(threading.Thread):
             except (TypeError, ValueError):
                 n = 255
             self.bac_actif = EXTERNE if n == 254 else "%d-%d" % (n // 4, n % 4) if 0 <= n < 16 else None
-            self.noter_bac()
 
     # ----- l'impression en cours
 
     def suivre_impression(self, p):
         premier = "gcode_state" not in self.vue
-        for champ in ("gcode_state", "mc_percent", "subtask_id", "task_id", "subtask_name", "gcode_file"):
+        for champ in ("gcode_state", "mc_percent", "subtask_id", "task_id", "subtask_name", "gcode_file", "gcode_start_time"):
             if champ in p:
                 self.vue[champ] = p[champ]
         etat = self.vue.get("gcode_state")
@@ -1322,24 +2139,40 @@ class Imprimante(threading.Thread):
             return
         ident = "%s:%s" % (self.repere, nom)
         percent = max(min(int(float(self.vue.get("mc_percent") or 0)), 100), 0)
+        maintenant = time.time()
         if etat in self.EN_COURS:
             if not self.tache or self.tache["ident"] != ident:
                 # `direct` : on a vu l'impression démarrer, et non découvert une impression déjà lancée
-                self.tache = {"ident": ident, "percent": percent, "bacs": [], "liee": False, "debut": time.time(),
-                              "direct": not premier}
+                self.tache = {"ident": ident, "percent": percent, "bacs": [], "liee": False, "debut": maintenant,
+                              "direct": not premier, "etat": etat, "actif": 0.0, "vu": maintenant, "apres": self.dernier}
+                self.dernier = maintenant
                 self.lier()
-            self.tache["percent"] = percent
+            t = self.tache
+            if t["etat"] != "PAUSE":  # le temps d'impression ne compte pas les pauses
+                t["actif"] += maintenant - t["vu"]
+            t["vu"], t["etat"], t["percent"] = maintenant, etat, percent
             if etat == "RUNNING":
                 self.noter_bac()
         elif etat in ("FINISH", "FAILED"):
             tache, self.tache = (self.tache if self.tache and self.tache["ident"] == ident else None), None
-            self.conclure(ident, etat, tache["percent"] if tache else percent, tache["bacs"] if tache else [])
+            self.dernier = maintenant
+            if tache and tache["etat"] != "PAUSE":
+                tache["actif"] += maintenant - tache["vu"]
+            self.conclure(ident, etat, tache["percent"] if tache else percent, tache["bacs"] if tache else [],
+                          tache["actif"] if tache and tache["direct"] else None, annoncer=not premier)
         else:
             self.tache = None
 
-    def fils_utilises(self, bacs):
-        return [{"couleur": e["couleur"], "type": e["type"]} for e in (self.emplacements.get(b, {}) for b in bacs)
-                if e.get("couleur") and e.get("type")]
+    def fils_utilises(self, bacs, bobines):
+        """Ce qu'il y avait dans les emplacements vus en service : la bobine posée là sur la page, sinon le fil annoncé."""
+        occupe = occupation(self.parc.places(), bobines, annonces_sures=False)
+        fils = []
+        for bac in bacs:
+            o = occupe.get("%s:%s" % (self.repere, bac))
+            if o:
+                couleur, _, type_fil = o["cle"].partition("|")
+                fils.append({"couleur": couleur, "type": type_fil, "bobine": o["bobine"], "bac": bac})
+        return fils
 
     def noter_bac(self):
         """Retient l'emplacement qui alimente l'impression en cours ; un seul fil : on sait déjà d'où il vient."""
@@ -1347,13 +2180,15 @@ class Imprimante(threading.Thread):
         if not t or self.vue.get("gcode_state") != "RUNNING" or not self.bac_actif or self.bac_actif in t["bacs"]:
             return
         t["bacs"].append(self.bac_actif)
-        self.reporter(t["ident"], lambda entree, bobines: attribuer_bacs(entree, self.fils_utilises(t["bacs"]), bobines, False))
+        self.reporter(t["ident"], lambda entree, bobines: attribuer_bacs(entree, self.fils_utilises(t["bacs"], bobines),
+                                                                       bobines, False))
 
     def reporter(self, ident, changement):
-        """Applique un changement à l'impression du journal liée à cette tâche, s'il y en a une."""
+        """Applique un changement à l'impression en cours du journal liée à cette tâche, s'il y en a une."""
         with verrou:
             journal = lire_journal(self.parc.donnees)
-            entree = next((e for e in journal if e.get("tache") == ident and not e.get("supprimee")), None)
+            entree = next((e for e in reversed(journal) if e.get("tache") == ident and not e.get("supprimee")
+                           and e.get("etat", "lancee") == "lancee"), None)
             if entree and changement(entree, lire_bobines(self.parc.donnees)):
                 ecrire_json(self.parc.donnees, "impressions.json", journal)
 
@@ -1363,36 +2198,157 @@ class Imprimante(threading.Thread):
         nom = str(self.vue.get("subtask_name") or "").lower()
         with verrou:
             journal = lire_journal(self.parc.donnees)
-            if any(e.get("tache") == t["ident"] for e in journal):
+            if any(e.get("tache") == t["ident"] and e.get("etat", "lancee") == "lancee" for e in journal):
                 t["liee"] = True
                 return
             maintenant = datetime.now()
             limite = (maintenant - timedelta(hours=48)).isoformat(timespec="seconds")
-            libres = [e for e in comptees(journal)
-                      if e.get("etat", "lancee") == "lancee" and not e.get("tache") and e["date"] >= limite]
+            libres = [e for e in comptees(journal) if e.get("etat", "lancee") == "lancee" and not e.get("tache")
+                      and e["date"] >= limite and e.get("source", "studio") == "studio"]
             # Bambu Studio nomme l'impression d'après le projet (« projet_plate_1 ») : c'est le lien le plus sûr.
             choisies = [e for e in libres if nom and nom.startswith(e["projet"].lower())]
-            if not choisies and t["direct"]:  # nom changé à l'envoi : la dernière lancée dans les vingt minutes
-                recent = (maintenant - timedelta(minutes=20)).isoformat(timespec="seconds")
+            if not choisies and t["direct"]:
+                # Nom changé à l'envoi : la dernière lancée dans les dix minutes, pourvu que l'imprimante
+                # n'ait rien fait d'autre depuis — sinon c'est une impression qui n'est jamais partie.
+                recent = max(maintenant - timedelta(minutes=10), datetime.fromtimestamp(t["apres"])).isoformat(timespec="seconds")
                 choisies = [e for e in libres if e["date"] >= recent]
             if choisies:
-                choisies[-1]["tache"], choisies[-1]["imprimante"] = t["ident"], self.numero
+                choisies[-1]["tache"] = t["ident"]
+                if not choisies[-1].get("imprimante_choisie"):
+                    choisies[-1]["imprimante"] = self.repere
                 ecrire_json(self.parc.donnees, "impressions.json", journal)
                 t["liee"] = True
                 print("impression suivie :", choisies[-1]["projet"], flush=True)
 
-    def conclure(self, ident, etat, percent, bacs):
+    def noter_ailleurs(self):
+        """Une impression que Bambu Studio n'a pas lancée d'ici (téléphone, écran de l'imprimante, autre
+        ordinateur) : elle est notée d'après ce que dit l'imprimante. Ses grammes restent à compléter."""
+        t = self.tache
+        fichier = str(self.vue.get("gcode_file") or "")
+        nom = nom_tache(self.vue.get("subtask_name") or fichier)
+        if fichier.startswith("/usr/") or "auto_cali" in (nom + fichier).lower():  # réglage interne, pas une impression
+            t["liee"] = True
+            return
+        debut = t["debut"]
+        try:  # quand l'impression tournait déjà, l'imprimante dit parfois à quelle heure elle est partie
+            annonce = float(self.vue.get("gcode_start_time") or 0)
+            if not t["direct"] and 0 < debut - annonce < 7 * 86400:
+                debut = annonce
+        except (TypeError, ValueError):
+            pass
+        entree = {"cle": "imprimante|%s|%d" % (t["ident"], debut), "projet": nom, "fichier": "", "etat": "lancee",
+                  "date": datetime.fromtimestamp(debut).isoformat(timespec="seconds"), "source": "imprimante",
+                  "a_completer": True, "tache": t["ident"], "imprimante": self.repere, "fils": [],
+                  "nom_imprimante": str(self.vue.get("subtask_name") or ""), "fichier_imprimante": fichier}
+        with verrou:
+            journal = lire_journal(self.parc.donnees)
+            if not any(e.get("tache") == t["ident"] and e.get("etat", "lancee") == "lancee" for e in journal):
+                bobines = lire_bobines(self.parc.donnees)
+                attribuer_bacs(entree, self.fils_utilises(t["bacs"], bobines), bobines, False)
+                journal.append(entree)
+                journal.sort(key=lambda e: e["date"])
+                ecrire_json(self.parc.donnees, "impressions.json", journal)
+                print("impression lancée ailleurs :", nom, flush=True)
+        t["liee"] = True
+
+    def conclure(self, ident, etat, percent, bacs, actif, annoncer):
         """L'impression est finie ou arrêtée : une impression arrêtée ne compte que pour la part faite."""
+        finie = []
+
         def changement(entree, bobines):
-            if entree.get("etat", "lancee") != "lancee":
-                return False
             entree["etat"] = "terminee" if etat == "FINISH" else "arretee"
             if etat == "FAILED" and not entree.get("corrigee"):
                 entree["part"] = round(percent / 100, 2)
-            attribuer_bacs(entree, self.fils_utilises(bacs), bobines, True)
+            if actif:
+                entree["duree"] = round(actif)
+            attribuer_bacs(entree, self.fils_utilises(bacs, bobines), bobines, True)
             print("impression", "terminée :" if etat == "FINISH" else "arrêtée à %d %% :" % percent, entree["projet"], flush=True)
+            finie.append(dict(entree))
             return True
         self.reporter(ident, changement)
+        if not finie:
+            return
+        entree = finie[0]
+        if annoncer and lire_reglages(self.parc.donnees)["fin"]:
+            titre = ("« %s » est terminée." % entree["projet"] if etat == "FINISH" else
+                     "« %s » s'est arrêtée à %d %%." % (entree["projet"], percent))
+            details = [self.parc.nom(self.repere)] if len(self.parc.imprimantes) > 1 else []
+            if temps(entree):
+                details.append(duree_texte(temps(entree)))
+            grammes = sum(f["g"] for f in entree["fils"]) * part(entree)
+            if grammes:
+                details.append("%s de fil" % poids_texte(grammes))
+            a_saisir = entree.get("a_completer") and not lire_reglages(self.parc.donnees)["carte"]
+            self.parc.fenetres.montrer(titre + ("\n" + " · ".join(details) if details else ""),
+                                       "Le fil utilisé reste à indiquer sur la page." if a_saisir else "")
+        if entree.get("a_completer"):
+            self.lire_carte(entree)
+
+    def lire_carte(self, entree):
+        """Va lire sur la carte de l'imprimante le fichier d'une impression lancée ailleurs, pour connaître
+        son fil. Une fois l'impression finie, en lecture seule, et seulement si le réglage est activé."""
+        if lire_reglages(self.parc.donnees)["carte"] and self.ip and self.serie:
+            threading.Thread(target=self.completer, daemon=True, args=(
+                entree["cle"], entree.get("nom_imprimante") or "", entree.get("fichier_imprimante") or "")).start()
+
+    def completer(self, cle, nom, fichier):
+        try:
+            lu = lire_carte(self.ip, self.parc.port_carte, self.parc.code(self), self.serie, nom, fichier, self.parc.ac)
+        except Exception as e:  # carte absente, imprimante occupée… : la saisie à la main reste possible
+            print("carte de l'imprimante illisible :", type(e).__name__, flush=True)
+            return
+        if not lu:
+            print("fichier introuvable sur la carte de l'imprimante :", nom, flush=True)
+            return
+        with verrou:
+            journal, bobines = lire_journal(self.parc.donnees), lire_bobines(self.parc.donnees)
+            entree = next((e for e in journal if e.get("cle") == cle and e.get("a_completer") and not e.get("supprimee")), None)
+            if not entree:
+                return
+            # La même impression, déjà comptée d'après le fichier de Bambu Studio sans avoir pu être
+            # reconnue sur l'imprimante (nom changé à l'envoi) : c'est elle qu'on garde.
+            pesee = sorted((f["couleur"], f["type"], f["g"]) for f in lu["fils"])
+            limite = (datetime.fromisoformat(entree["date"]) - timedelta(hours=48)).isoformat(timespec="seconds")
+            jumelle = next((e for e in reversed(journal) if not e.get("supprimee") and not e.get("tache")
+                            and e.get("source", "studio") == "studio" and e.get("etat", "lancee") == "lancee"
+                            and limite <= e["date"] <= entree["date"]
+                            and sorted(((f.get("projet") or f)["couleur"], (f.get("projet") or f)["type"], f["g"])
+                                       for f in e["fils"]) == pesee), None)
+            if jumelle:
+                jumelle.update({k: entree[k] for k in ("tache", "etat", "part", "duree") if k in entree})
+                if not jumelle.get("imprimante_choisie"):
+                    jumelle["imprimante"] = self.repere
+                entree["supprimee"] = True
+                entree = jumelle
+            else:
+                vus = [f["bac"] for f in entree["fils"] if f.get("bac")]
+                entree["secondes"] = lu["secondes"]
+                entree["fils"] = [dict(f) for f in lu["fils"]]
+                entree.pop("a_completer", None)
+                if not lu["bacs"]:  # pas de note de l'imprimante : les emplacements vus en service, à la couleur la plus proche
+                    attribuer_bacs(entree, self.fils_utilises(vus, bobines), bobines, True)
+            # Chaque fil va à la bobine de l'emplacement que l'imprimante a noté pour lui.
+            occupe = occupation(self.parc.places(), bobines, annonces_sures=False)
+            for f in entree["fils"]:
+                if f.get("bobine_choisie"):
+                    continue
+                o = occupe.get("%s:%s" % (self.repere, lu["bacs"].get(f.get("numero"))))
+                if o:
+                    couleur, _, type_fil = o["cle"].partition("|")
+                    if (couleur, type_fil) != (f["couleur"], f["type"]):
+                        f.setdefault("projet", {"couleur": f["couleur"], "type": f["type"]})
+                    f.update(couleur=couleur, type=type_fil, bac=lu["bacs"][f["numero"]])
+                    if o["bobine"]:
+                        f["bobine"] = o["bobine"]
+                    else:
+                        f.pop("bobine", None)
+                elif not f.get("bobine"):
+                    choix = bobine_probable(cle_fil(f), bobines, occupe)
+                    if choix:
+                        f["bobine"] = choix
+            poser_prix(entree, bobines)
+            ecrire_json(self.parc.donnees, "impressions.json", journal)
+        print("fil lu sur la carte de l'imprimante :", entree["projet"], flush=True)
 
     def verifier(self):
         """Annonce les changements de bobine une fois stabilisés, et relie l'impression en cours si besoin."""
@@ -1413,10 +2369,13 @@ class Imprimante(threading.Thread):
         if lignes:
             self.parc.fenetres.montrer("\n".join(sorted(lignes)), "Pensez à mettre la page des bobines à jour.")
         # L'imprimante peut annoncer le départ avant que le fichier de Bambu Studio ait été lu : on y revient.
+        # Passé ce délai, c'est une impression lancée ailleurs.
         t = self.tache
-        if t and not t["liee"] and maintenant - t["debut"] < 180 and maintenant - t.get("essai", 0) > 5:
+        if t and not t["liee"] and maintenant - t.get("essai", 0) > 5:
             t["essai"] = maintenant
             self.lier()
+            if not t["liee"] and maintenant - t["debut"] >= self.parc.attente_studio:
+                self.noter_ailleurs()
 
 
 # ---------------------------------------------------------------- lancement
@@ -1437,6 +2396,9 @@ def main():
     a.add_argument("--delais", default="%d,%d" % (STABILISATION, REMPLACEMENT), help="délais d'annonce en secondes (essais)")
     a.add_argument("--journal", action="store_true", help="écrire le journal du programme dans le dossier des données")
     a.add_argument("--chemins", action="store_true", help="montrer les dossiers utilisés sur cet ordinateur, puis s'arrêter")
+    a.add_argument("--port-carte", type=int, default=990, help="port de la carte mémoire des imprimantes (essais)")
+    a.add_argument("--maj", default=DEPOT + "version.txt", metavar="ADRESSE",
+                   help="où lire la dernière version parue ; vide : ne pas regarder")
     o = a.parse_args()
     for flux in (sys.stdout, sys.stderr):  # un nom de projet inattendu ne doit jamais faire échouer une écriture
         try:
@@ -1450,6 +2412,7 @@ def main():
                          ensure_ascii=False, indent=1))
         return
     os.makedirs(o.donnees, exist_ok=True)
+    reprendre_anciennes_donnees(o.donnees)
     if o.journal:  # sans launchd pour le faire (Windows, Linux), le programme tient lui-même son journal
         sys.stdout = sys.stderr = open(os.path.join(o.donnees, "compteur.log"), "a", encoding="utf-8", buffering=1)
     if o.couleurs:
@@ -1476,12 +2439,18 @@ def main():
             hote, _, port_imprimante = adresse.rpartition(":")
             adresses[serie or "*"] = (hote, int(port_imprimante))
         parc = Parc(o.donnees, fenetres, o.bambu_conf, o.bambu_ac, adresses, tuple(float(x) for x in o.delais.split(",")))
+        parc.port_carte = o.port_carte
+    nouveautes = None
+    if o.maj and version_installee():
+        nouveautes = Nouveautes(o.maj)
+        nouveautes.start()
     serveur, ouvert, essai, vu = None, None, 0, 0
     while True:
         maintenant = time.time()
         if parc and maintenant - vu > 60:  # une imprimante ajoutée dans Bambu Studio est écoutée dans la minute
             vu = maintenant
             parc.actualiser()
+            rattacher(o.donnees)
         reseau = lire_reglages(o.donnees)["reseau"]
         if serveur is not None and ouvert != reseau:  # le réglage a changé : la page change de porte
             serveur.shutdown()
@@ -1489,13 +2458,14 @@ def main():
             serveur = None
         if serveur is None and maintenant >= essai:
             try:
-                serveur, ouvert = lancer_serveur(o.donnees, o.port, parc, reseau), reseau
+                serveur, ouvert = lancer_serveur(o.donnees, o.port, parc, reseau, nouveautes), reseau
                 print("page sur http://127.0.0.1:%d/%s" % (o.port, ", ouverte au réseau local" if reseau else ""), flush=True)
             except OSError as e:  # port occupé : la surveillance continue, on réessaie plus tard
                 print("page indisponible :", e, file=sys.stderr, flush=True)
                 essai = maintenant + 30
         try:
-            veilleur.passage()
+            if veilleur.passage() and parc:
+                rattacher(o.donnees)
         except Exception as e:  # ne jamais s'arrêter sur un fichier inattendu
             print("erreur :", repr(e), file=sys.stderr, flush=True)
         time.sleep(PAUSE)

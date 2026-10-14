@@ -59,7 +59,7 @@ def page(port, chemin="/", donnees=None, entetes=None, hote="127.0.0.1"):
         with urllib.request.build_opener(SansRedirection).open(requete, timeout=5) as r:
             return r.status, r.read().decode("utf-8", "replace"), r.headers
     except urllib.error.HTTPError as e:
-        return e.code, "", e.headers
+        return e.code, e.read().decode("utf-8", "replace"), e.headers
     except OSError:
         return 0, "", {}
 
@@ -149,6 +149,12 @@ class Banc:
                 f.write(json.dumps({"print": annonce}) + "\n")
         return dicter
 
+    def carte(self, serie, port, dossier):
+        """Lance la fausse carte mémoire de cette imprimante : elle sert les fichiers du dossier."""
+        self.processus.append(subprocess.Popen(
+            [sys.executable, os.path.join(DEPOT, "tests", "fausse_carte.py"), str(port), self.chemin(serie + ".pem"),
+             self.chemin(serie + ".key"), CODE, dossier], stdout=self.sortie("carte.log"), stderr=subprocess.STDOUT))
+
     def conf(self, series):
         chemin = self.chemin("BambuStudio-%d.conf" % len(series))
         with open(chemin, "w", encoding="utf-8") as f:
@@ -156,6 +162,8 @@ class Banc:
         return chemin
 
     def compteur(self, arguments):
+        if "--maj" not in arguments:  # les essais ne vont rien lire sur Internet
+            arguments = arguments + ["--maj", ""]
         self.processus.append(lancer(arguments, self.sortie("compteur.log")))
 
     def lu(self, nom):
@@ -205,8 +213,13 @@ def essais_a_part():
     def impression(projet):
         return next((i for i in etat(port)["impressions"] if i["projet"] == projet), None)
 
-    def bobine(couleur):
-        return next((b for b in etat(port)["bobines"] if b["couleur"] == couleur), None)
+    def bobine(couleur, marque=None):
+        return next((b for b in etat(port)["bobines"] if b["couleur"] == couleur and marque in (None, b["marque"])), None)
+
+    def retirer(couleur):
+        for b in etat(port)["bobines"]:
+            if b["couleur"] == couleur and b["suivie"]:
+                poster("/retirer", {"id": b["id"]})
 
     try:
         print("Chemins par défaut sur ce système")
@@ -217,11 +230,35 @@ def essais_a_part():
         verifier("dossier temporaire du système surveillé",
                  any(os.path.realpath(r) == os.path.realpath(tempfile.gettempdir()) for r in chemins["dossiers_de_travail"]))
 
+        print("Anciennes données : une bobine par couleur")
+        anciennes = banc.chemin("anciennes")
+        os.makedirs(anciennes)
+        with open(os.path.join(anciennes, "bobines.json"), "w", encoding="utf-8") as fichier:
+            json.dump({NOIR + "|PLA": {"couleur": NOIR, "type": "PLA", "poids": 1000, "prix": 20, "depuis": "2026-01-02T00:00:00"}}, fichier)
+        with open(os.path.join(anciennes, "impressions.json"), "w", encoding="utf-8") as fichier:
+            json.dump([{"cle": "a", "date": "2026-01-01T10:00:00", "projet": "Avant", "fils": [{"couleur": NOIR, "type": "PLA", "g": 10, "m": 3}]},
+                       {"cle": "b", "date": "2026-01-03T10:00:00", "projet": "Après", "fils": [{"couleur": NOIR, "type": "PLA", "g": 30, "m": 9, "prix_kg": 20}]}],
+                      fichier)
+        verifier("les anciennes bobines reçoivent un identifiant", compteur.reprendre_anciennes_donnees(anciennes)
+                 and not compteur.reprendre_anciennes_donnees(anciennes))
+        reprises, repris = compteur.lire_bobines(anciennes), journal(anciennes)
+        ident = next(iter(reprises))
+        verifier("leurs impressions les désignent, et le reste est le même",
+                 "|" not in ident and "bobine" not in repris[0]["fils"][0] and repris[1]["fils"][0]["bobine"] == ident
+                 and compteur.restes(repris, reprises)[ident] == 970, str(repris))
+
         dicter = banc.imprimante(SERIE, 48883)
         fenetres = banc.chemin("fenetres.txt")
+        parue = banc.chemin("version.txt")
+        with open(parue, "w", encoding="utf-8") as fichier:
+            fichier.write("%d\nNouveautés d'essai\n" % (compteur.version_installee() + 1))
+        import pathlib
+        sur_carte = banc.chemin("carte")
+        os.makedirs(os.path.join(sur_carte, "cache"))
+        banc.carte(SERIE, 48990, sur_carte)
         banc.compteur(["--racine", racine, "--donnees", donnees, "--port", str(port), "--imprimante", "127.0.0.1:48883",
                        "--bambu-conf", banc.conf([SERIE]), "--bambu-ac", banc.ac, "--fenetre-essai", fenetres,
-                       "--delais", "2,6"])
+                       "--delais", "2,6", "--maj", pathlib.Path(parue).as_uri(), "--port-carte", "48990"])
 
         def vues():
             return banc.lu("fenetres.txt")
@@ -231,6 +268,7 @@ def essais_a_part():
         verifier("la page porte le nom BlokBambu", "<title>BlokBambu</title>" in page(port)[1])
         verifier("la police des titres est servie", page(port, "/police.woff2")[0] == 200)
         verifier("les données de la page sont servies", etat(port)["resume"]["impressions"] == 0)
+        verifier("la page dit sa version", etat(port)["version"] == compteur.version_installee() > 0, str(etat(port)["version"]))
 
         print("Impression lancée depuis Bambu Studio")
         envoi(racine, "12_00_00#1#1", 1, [(NOIR, "PLA", 10.83), ("#FFFFFFFF", "PLA", 0.83)])
@@ -270,7 +308,7 @@ def essais_a_part():
         verifier("coût du mois et total", etat(port)["resume"]["mois"]["cout"] == 0.22 and etat(port)["resume"]["cout"] == 0.22,
                  str(etat(port)["resume"]))
         verifier("modifier le prix sans toucher au reste",
-                 poster("/bobine/modifier", {"couleur": NOIR, "type": "PLA", "marque": "eSUN", "prix": "30", "reserve": "2"}) == 200
+                 poster("/bobine/modifier", {"id": bobine(NOIR)["id"], "marque": "eSUN", "prix": "30", "reserve": "2"}) == 200
                  and bobine(NOIR)["reste"] == 989.17 and bobine(NOIR)["prix"] == 30)
         verifier("le prix corrigé vaut pour les impressions de cette bobine", etat(port)["impressions"][0]["cout"] == 0.32,
                  str(etat(port)["impressions"][0]))
@@ -290,17 +328,83 @@ def essais_a_part():
         verifier("une impression supprimée n'est pas recomptée", len(etat(port)["impressions"]) == 1)
 
         print("Nouvelle bobine, marques")
-        poster("/bobine", {"couleur": NOIR, "type": "PLA", "poids": "1000", "marque": "Ma Marque Maison", "prix": "30", "reserve": "1"})
+        ancienne = bobine(NOIR)["id"]
+        poster("/bobine", {"couleur": NOIR, "type": "PLA", "poids": "1000", "marque": "Ma Marque Maison", "prix": "30", "reserve": "1",
+                           "remplace": ancienne})
         b = bobine(NOIR)
-        verifier("« Nouvelle bobine » remet à neuf", b["reste"] == 1000 and b["part"] == 1, str(b))
+        verifier("« Nouvelle bobine » remet à neuf et prend la place de l'ancienne",
+                 b["reste"] == 1000 and b["part"] == 1 and b["id"] != ancienne and len(etat(port)["bobines"]) == 1, str(b))
         verifier("une marque nouvelle est retenue et proposée ensuite",
                  b["marque"] == "Ma Marque Maison" and "Ma Marque Maison" in etat(port)["marques"])
         verifier("les marques de base sont proposées", {"Bambu Lab", "eSUN", "Polymaker"} <= set(etat(port)["marques"]))
         verifier("marque devinée d'après le nom du fil dans Bambu Studio",
                  compteur.marque_devinee(["eSUN PLA+"]) == "eSUN" and compteur.marque_devinee(["PolyTerra PLA"]) == "Polymaker"
                  and compteur.marque_devinee(["Generic PLA"]) == "")
-        poster("/retirer", {"couleur": NOIR, "type": "PLA"})
-        verifier("retrait d'une bobine", etat(port)["bobines"] == [])
+        verifier("retrait d'une bobine", poster("/retirer", {"id": b["id"]}) == 200 and etat(port)["bobines"] == [])
+        verifier("retrait d'une bobine inconnue refusé", poster("/retirer", {"id": "inconnue"}) == 400)
+
+        print("Plusieurs bobines de la même couleur")
+        poster("/bobine", {"couleur": NOIR, "type": "PLA", "poids": "1000", "marque": "eSUN", "prix": "20"})
+        time.sleep(1.1)
+        poster("/bobine", {"couleur": NOIR, "type": "PLA", "poids": "500", "marque": "Polymaker", "prix": "40"})
+        noires = [x for x in etat(port)["bobines"] if x["couleur"] == NOIR]
+        verifier("deux bobines noires se suivent côte à côte", sorted(x["marque"] for x in noires) == ["Polymaker", "eSUN"], str(noires))
+        envoi(racine, "12_05_00#1#9", 9, [(NOIR, "PLA", 100.0)], origine="Double noir.3mf")
+        verifier("sans autre indice, l'impression se déduit de la plus ancienne",
+                 attendre(lambda: impression("Double noir") and bobine(NOIR, "eSUN")["reste"] == 900 and bobine(NOIR, "Polymaker")["reste"] == 500),
+                 str(etat(port)["bobines"]))
+        double = impression("Double noir")
+        verifier("la bobine d'une impression se choisit à la main",
+                 poster("/impression", {"id": double["id"], "part": "100", "fils": json.dumps(
+                     [{"bobine": bobine(NOIR, "Polymaker")["id"], "g": 100}])}) == 200
+                 and bobine(NOIR, "eSUN")["reste"] == 1000 and bobine(NOIR, "Polymaker")["reste"] == 400, str(etat(port)["bobines"]))
+        verifier("le coût suit le prix de la bobine choisie", impression("Double noir")["cout"] == 4.0, str(impression("Double noir")))
+        verifier("une bobine se pose à la main sur un emplacement",
+                 poster("/bobine/modifier", {"id": bobine(NOIR, "Polymaker")["id"], "marque": "Polymaker", "prix": "40",
+                                             "emplacement": etat(port)["emplacements"][1]["id"]}) == 200
+                 and bobine(NOIR, "Polymaker")["emplacements"] == ["A2"], str(bobine(NOIR, "Polymaker")))
+        envoi(racine, "12_06_00#1#10", 10, [(NOIR, "PLA", 50.0)], origine="Noir en place.3mf")
+        verifier("la bobine posée sur l'imprimante est celle qui fournit",
+                 attendre(lambda: impression("Noir en place") and bobine(NOIR, "Polymaker")["reste"] == 350), str(etat(port)["bobines"]))
+        verifier("emplacement invalide refusé", poster("/bobine/modifier", {"id": bobine(NOIR, "eSUN")["id"], "emplacement": "ailleurs"}) == 400)
+        poster("/impression/supprimer", {"id": impression("Noir en place")["id"]})
+        poster("/impression/supprimer", {"id": impression("Double noir")["id"]})
+        retirer(NOIR)
+        verifier("plus aucune bobine noire", bobine(NOIR) is None)
+
+        print("Impression ajoutée à la main, temps d'impression")
+        poster("/bobine", {"couleur": BLANC, "type": "PETG", "poids": "1000", "marque": "Sunlu", "prix": "25"})
+        blanche = next(x for x in etat(port)["bobines"] if x["type"] == "PETG")
+        verifier("impression notée à la main", poster("/impression/ajouter", {
+            "projet": "Vase du téléphone", "date": time.strftime("%Y-%m-%dT%H:%M"), "minutes": "90",
+            "fils": json.dumps([{"bobine": blanche["id"], "g": "40"}, {"couleur": ORANGE, "type": "PLA", "g": 12.5}])}) == 200)
+        vase = impression("Vase du téléphone")
+        verifier("elle porte ses grammes, son coût et sa durée",
+                 bool(vase) and [(x["couleur"], x["g"]) for x in vase["fils"]] == [(BLANC, 40.0), (ORANGE, 12.5)]
+                 and vase["cout"] == 1.0 and vase["secondes"] == 5400 and vase["source"] == "main", str(vase))
+        verifier("elle se déduit de la bobine choisie",
+                 next(x for x in etat(port)["bobines"] if x["type"] == "PETG")["reste"] == 960, str(etat(port)["bobines"]))
+        verifier("le temps d'impression est totalisé par mois", etat(port)["mois"][0]["secondes"] >= 5400
+                 and etat(port)["resume"]["mois"]["secondes"] == etat(port)["mois"][0]["secondes"], str(etat(port)["mois"]))
+        verifier("impression à la main sans fil refusée", poster("/impression/ajouter", {
+            "projet": "Vide", "date": time.strftime("%Y-%m-%dT%H:%M"), "fils": "[]"}) == 400)
+        verifier("impression à la main sans nom refusée", poster("/impression/ajouter", {
+            "projet": " ", "date": time.strftime("%Y-%m-%dT%H:%M"), "fils": json.dumps([{"couleur": ORANGE, "type": "PLA", "g": 5}])}) == 400)
+        verifier("ses grammes se corrigent", poster("/impression", {"id": vase["id"], "part": "100", "fils": json.dumps(
+            [{"bobine": blanche["id"], "g": 60}])}) == 200 and impression("Vase du téléphone")["cout"] == 1.5
+            and next(x for x in etat(port)["bobines"] if x["type"] == "PETG")["reste"] == 940, str(impression("Vase du téléphone")))
+        poster("/impression/supprimer", {"id": vase["id"]})
+        poster("/retirer", {"id": blanche["id"]})
+
+        print("Seuil « bientôt vide »")
+        poster("/bobine", {"couleur": BLEU, "type": "PLA", "poids": "150"})
+        verifier("à 150 g, la bobine n'est pas signalée", bobine(BLEU)["bas"] is False)
+        verifier("le seuil se règle", poster("/reglages", {"seuil": "200"}) == 200 and etat(port)["reglages"]["seuil"] == 200
+                 and bobine(BLEU)["bas"] is True, str(bobine(BLEU)))
+        verifier("seuil invalide refusé", poster("/reglages", {"seuil": "beaucoup"}) == 400)
+        verifier("régler le seuil ne touche pas à l'accès du téléphone", etat(port)["reglages"]["reseau"] is False)
+        poster("/reglages", {"seuil": "100"})
+        retirer(BLEU)
 
         print("Alertes au lancement d'une impression")
         poster("/bobine", {"couleur": ORANGE, "type": "PLA", "poids": "5"})
@@ -318,8 +422,8 @@ def essais_a_part():
                  str(alertes))
         verifier("une alerte se ferme depuis la page", poster("/alerte/fermer", {"id": alertes[0]["id"]}) == 200
                  and etat(port)["alertes"] == [])
-        poster("/retirer", {"couleur": ORANGE, "type": "PLA"})
-        poster("/retirer", {"couleur": BLEU, "type": "PLA"})
+        retirer(ORANGE)
+        retirer(BLEU)
 
         print("Imprimante : bobines")
         verifier("liaison établie avec la fausse imprimante",
@@ -352,6 +456,12 @@ def essais_a_part():
         arretee = attendre(lambda: impression("Pièce seule")["part"] == 0.4 and impression("Pièce seule"))
         verifier("impression arrêtée : seule la part faite compte", bool(arretee) and arretee["fils"][0]["g"] == 8.0
                  and arretee["en_cours"] is None, str(impression("Pièce seule")))
+        verifier("une fenêtre dit que l'impression s'est arrêtée", attendre(lambda: "« Pièce seule » s'est arrêtée à 40 %." in vues()), vues())
+        seule = etat(port)["imprimantes"][0]
+        verifier("l'impression porte son imprimante", arretee["imprimante"] == seule["id"], str(arretee))
+        verifier("les impressions sans imprimante connue reviennent à la seule imprimante suivie",
+                 attendre(lambda: etat(port)["imprimantes"][0]["total"]["impressions"] == etat(port)["resume"]["impressions"], 75),
+                 str(etat(port)["imprimantes"][0]["total"]))
 
         envoi(racine, "12_30_00#1#4", 4, [(NOIR, "PLA", 6.0), (BLANC, "PLA", 4.0)], origine="Deux fils.3mf")
         verifier("impression à deux fils comptée", attendre(lambda: impression("Deux fils")))
@@ -364,6 +474,73 @@ def essais_a_part():
         verifier("impression menée au bout : elle compte en entier, chaque fil sur sa bobine",
                  finie["part"] == 1 and finie["en_cours"] is None
                  and [(f["couleur"], f["g"]) for f in finie["fils"]] == [(NOIR, 6.0), (BLANC, 4.0)], str(finie))
+        verifier("une fenêtre dit que l'impression est terminée", "« Deux fils » est terminée." in vues(), vues())
+        verifier("l'alerte de fin se coupe dans les réglages", poster("/reglages", {"fin": "0"}) == 200 and etat(port)["reglages"]["fin"] is False)
+
+        print("Impression lancée ailleurs (téléphone, écran de l'imprimante)")
+        dicter({"gcode_state": "PREPARE", "subtask_name": "Du téléphone_plate_1", "subtask_id": "4300", "mc_percent": 0,
+                "gcode_file": "/data/Metadata/plate_1.gcode"})
+        dicter({"gcode_state": "RUNNING", "mc_percent": 20, "ams": {"tray_now": "0"}})
+        verifier("entre deux impressions, l'imprimante est dite au repos", etat(port)["imprimantes"][0]["repos"] is True)
+        verifier("la carte de l'imprimante dit ce qu'elle imprime", attendre(lambda: etat(port)["imprimantes"][0]["impression"] == {
+            "projet": "Du téléphone", "percent": 20, "pause": False} and etat(port)["imprimantes"][0]["repos"] is False),
+            str(etat(port)["imprimantes"][0]))
+        ailleurs = attendre(lambda: impression("Du téléphone"), 40)
+        verifier("elle apparaît d'après l'écoute de l'imprimante, à compléter",
+                 bool(ailleurs) and ailleurs["a_completer"] and ailleurs["source"] == "imprimante" and ailleurs["en_cours"] == 20
+                 and ailleurs["imprimante"] == seule["id"], str(ailleurs))
+        verifier("l'emplacement utilisé donne la couleur, grammes à saisir",
+                 bool(ailleurs) and [(x["couleur"], x["g"]) for x in ailleurs["fils"]] == [(BLEU, 0)], str(ailleurs))
+        dicter({"gcode_state": "PAUSE"})
+        verifier("une pause se voit", attendre(lambda: etat(port)["imprimantes"][0]["impression"]["pause"] is True))
+        dicter({"gcode_state": "RUNNING", "mc_percent": 60})
+        dicter({"gcode_state": "FINISH", "mc_percent": 100})
+        finie = attendre(lambda: impression("Du téléphone")["en_cours"] is None and impression("Du téléphone")) or {"id": "", "secondes": 0}
+        verifier("sa fin et sa durée sont notées", finie["secondes"] > 0 and finie["a_completer"], str(finie))
+        time.sleep(1)
+        verifier("alerte de fin coupée : pas de fenêtre", "« Du téléphone »" not in vues(), vues())
+        poster("/reglages", {"fin": "1"})
+        verifier("on complète ses grammes sur la page", poster("/impression", {"id": finie["id"], "part": "100", "fils": json.dumps(
+            [{"couleur": BLEU, "type": "PLA", "g": 33}])}) == 200 and impression("Du téléphone")["a_completer"] is False
+            and impression("Du téléphone")["fils"][0]["g"] == 33, str(impression("Du téléphone")))
+        verifier("le temps d'impression est compté pour l'imprimante",
+                 etat(port)["imprimantes"][0]["mois"]["secondes"] >= finie["secondes"] > 0, str(etat(port)["imprimantes"][0]["mois"]))
+
+        print("Poids lu sur la carte de l'imprimante")
+        resume = ('<?xml version="1.0" encoding="UTF-8"?><config><plate><metadata key="index" value="1"/>'
+                  '<metadata key="prediction" value="600"/><object identify_id="1" name="Cube"/>'
+                  '<filament id="1" type="PLA" color="%s" used_m="7.2" used_g="21.5"/>'
+                  '<filament id="2" type="PLA" color="%s" used_m="1.2" used_g="3.5"/></plate></config>' % (NOIR, BLANC))
+        with zipfile.ZipFile(os.path.join(sur_carte, "cache", "Carte SD_plate_1.3mf"), "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("Metadata/plate_1.gcode", "; essai\n" * 20000)
+            z.writestr("Metadata/slice_info.config", resume)
+        with open(os.path.join(sur_carte, "cache", "1_Carte SD_plate_1.bbl"), "w", encoding="utf-8") as fichier:
+            json.dump({"subtask_name": "Carte SD_plate_1", "ams mapping": [3, 1]}, fichier)
+        poster("/bobine", {"couleur": ORANGE, "type": "PLA", "poids": "1000", "prix": "20"})
+        verifier("la lecture de la carte s'active dans les réglages", poster("/reglages", {"carte": "1"}) == 200
+                 and etat(port)["reglages"]["carte"] is True and etat(port)["lecture_carte"] is True)
+        dicter({"gcode_state": "PREPARE", "subtask_name": "Carte SD_plate_1", "subtask_id": "4400", "mc_percent": 0,
+                "gcode_file": "/data/Metadata/plate_1.gcode"})
+        dicter({"gcode_state": "RUNNING", "mc_percent": 50, "ams": {"tray_now": "3"}})
+        verifier("impression lancée ailleurs notée", attendre(lambda: impression("Carte SD"), 40))
+        verifier("rien n'est lu sur la carte pendant l'impression", "RETR" not in banc.lu("carte.log"), banc.lu("carte.log"))
+        dicter({"gcode_state": "FINISH", "mc_percent": 100})
+        lue = attendre(lambda: not impression("Carte SD")["a_completer"] and impression("Carte SD")) or {"fils": [], "secondes": 0, "cout": 0}
+        verifier("à la fin, ses grammes sont lus sur la carte, chaque fil à l'emplacement noté par l'imprimante",
+                 [(x["couleur"], x["g"]) for x in lue["fils"]] == [(ORANGE, 21.5), (BLANC, 3.5)] and lue["secondes"] == 600, str(lue))
+        verifier("le fil lu se déduit de la bobine de cet emplacement et se chiffre",
+                 bobine(ORANGE)["reste"] == 978.5 and lue["cout"] == 0.43, str(bobine(ORANGE)))
+        journal_carte = banc.lu("carte.log")
+        verifier("le compteur n'a fait que lire la carte, et a fermé proprement",
+                 "ECRITURE" not in journal_carte and "BRUTALE" not in journal_carte and journal_carte.count("fin de transfert propre") == 2,
+                 journal_carte)
+        dicter({"gcode_state": "RUNNING", "subtask_name": "Absente_plate_1", "subtask_id": "4401", "mc_percent": 5})
+        verifier("autre impression lancée ailleurs", attendre(lambda: impression("Absente"), 40))
+        dicter({"gcode_state": "FINISH", "mc_percent": 100})
+        time.sleep(4)
+        verifier("fichier absent de la carte : la saisie à la main reste", impression("Absente")["a_completer"] is True, str(impression("Absente")))
+        poster("/reglages", {"carte": "0"})
+        retirer(ORANGE)
 
         print("Imprimante : bobine Bambu Lab à puce")
         dicter({"ams": bacs(BLEU, BLANC, NOIR, ORANGE, bac0={"tag_uid": "A1B2C3D400000100", "tray_weight": "1000",
@@ -374,6 +551,12 @@ def essais_a_part():
         echanges = banc.lu(SERIE + ".log")
         verifier("le code d'accès est accepté", "CONNECT, code juste" in echanges, echanges)
         verifier("le compteur n'a rien publié vers l'imprimante", "COMMANDE" not in echanges, echanges)
+
+        print("Mise à jour parue")
+        maj = attendre(lambda: etat(port)["maj"])
+        verifier("la page annonce la version parue, avec la ligne à relancer",
+                 bool(maj) and maj["version"] == compteur.version_installee() + 1 and maj["quoi"] == "Nouveautés d'essai"
+                 and "installer" in maj["commande"], str(maj))
 
         print("Accès depuis le téléphone")
         adresse = compteur.adresse_locale()
@@ -426,14 +609,72 @@ def essais_a_part():
                  str(etat(47819)["imprimantes"]) if page(47819)[0] else "page muette")
         dicter_a({"ams": bacs(NOIR, BLANC, BLEU, ORANGE)})
         dicter_b({"ams": bacs(ORANGE, NOIR, BLANC, BLEU)})
-        verifier("chaque bobine porte son imprimante et son emplacement",
-                 attendre(lambda: {x["cle"]: x["emplacements"] for x in etat(47819)["a_suivre"]}.get(NOIR + "|PLA") == ["1·A1", "2·A2"]),
-                 str(etat(47819)["a_suivre"]))
+        verifier("chaque bobine porte son emplacement et son imprimante",
+                 attendre(lambda: {x["cle"]: (x["emplacements"], x["imprimantes"]) for x in etat(47819)["a_suivre"]}.get(NOIR + "|PLA")
+                          == (["A1", "A2"], ["Imprimante 1", "Imprimante 2"])), str(etat(47819)["a_suivre"]))
+        verifier("pas de mise à jour annoncée quand on ne regarde pas", etat(47819)["maj"] is None)
         dicter_b({"ams": {"tray_exist_bits": "e"}})
         time.sleep(1.5)
         dicter_b({"ams": {"tray_exist_bits": "f"}})
         verifier("la fenêtre dit de quelle imprimante il s'agit",
                  attendre(lambda: "Imprimante 2, emplacement A1 : bobine changée." in banc.lu("fenetres2.txt")), banc.lu("fenetres2.txt"))
+
+        print("Réglages des imprimantes")
+        origine2 = {"Origin": "http://127.0.0.1:47819"}
+
+        def poster2(chemin, champs):
+            return page(47819, chemin, urllib.parse.urlencode(champs).encode("utf-8"), origine2)
+
+        def cartes():
+            return etat(47819)["imprimantes"]
+
+        reglees = etat(47819)["reglages"]["imprimantes"]
+        verifier("les réglages listent les deux imprimantes",
+                 [(x["defaut"], x["suivie"], x["etat"]) for x in reglees] == [("Imprimante 1", True, "connectée"), ("Imprimante 2", True, "connectée")],
+                 str(reglees))
+        verifier("une imprimante se nomme", poster2("/imprimante", {"id": reglees[1]["id"], "nom": "  Garage  "})[0] == 200
+                 and [x["nom"] for x in cartes()] == ["Imprimante 1", "Garage"], str(cartes()))
+        verifier("imprimante inconnue refusée", poster2("/imprimante", {"id": "0000000000", "nom": "X"})[0] == 400)
+        dicter_b({"ams": {"tray_exist_bits": "d"}})
+        time.sleep(1.5)
+        dicter_b({"ams": {"tray_exist_bits": "f"}})
+        verifier("les fenêtres prennent le nom donné",
+                 attendre(lambda: "Garage, emplacement A2 : bobine changée." in banc.lu("fenetres2.txt")), banc.lu("fenetres2.txt"))
+        verifier("une imprimante se retire", poster2("/imprimante/retirer", {"id": reglees[0]["id"]})[0] == 200
+                 and [x["nom"] for x in cartes()] == ["Garage"], str(cartes()))
+        verifier("ses bobines ne sont plus montrées",
+                 {x["cle"]: x["emplacements"] for x in etat(47819)["a_suivre"]}.get(NOIR + "|PLA") == ["A2"], str(etat(47819)["a_suivre"]))
+        verifier("elle reste proposée dans les réglages",
+                 [(x["defaut"], x["suivie"]) for x in etat(47819)["reglages"]["imprimantes"]][0] == ("Imprimante 1", False),
+                 str(etat(47819)["reglages"]["imprimantes"]))
+        verifier("et se reprend d'un clic", poster2("/imprimante/suivre", {"id": reglees[0]["id"]})[0] == 200
+                 and attendre(lambda: [x["etat"] for x in cartes()] == ["connectee", "connectee"]), str(cartes()))
+
+        print("Imprimante ajoutée à la main")
+        dicter_c = banc.imprimante("ESSAI00000000M1", 48886)
+        attendre(lambda: "fausse imprimante" in banc.lu("ESSAI00000000M1.log"))
+        refus = poster2("/imprimante/ajouter", {"adresse": "127.0.0.1:48886", "code": "mauvaiscode", "nom": "Atelier"})
+        verifier("code d'accès faux : refus expliqué", refus[0] == 400 and "refuse ce code" in refus[1], str(refus[:2]))
+        refus = poster2("/imprimante/ajouter", {"adresse": "8.8.8.8", "code": CODE})
+        verifier("adresse hors du réseau local refusée", refus[0] == 400 and "réseau local" in refus[1], str(refus[:2]))
+        refus = poster2("/imprimante/ajouter", {"adresse": "127.0.0.1:47819", "code": CODE})
+        verifier("un appareil qui n'est pas une imprimante Bambu est refusé", refus[0] == 400 and "erreur" in refus[1], str(refus[:2]))
+        ajout = poster2("/imprimante/ajouter", {"adresse": "127.0.0.1:48886", "code": CODE, "nom": "Atelier"})
+        verifier("imprimante ajoutée avec son adresse et son code", ajout[0] == 200, str(ajout[:2]))
+        verifier("elle est écoutée sous son nom",
+                 attendre(lambda: [(x["nom"], x["etat"]) for x in cartes()][2:] == [("Atelier", "connectee")]), str(cartes()))
+        dicter_c({"ams": bacs(BLANC, BLEU, NOIR, ORANGE)})
+        verifier("ses emplacements arrivent", attendre(lambda: [x["couleur"] for x in cartes()[2]["emplacements"]] == [BLANC, BLEU, NOIR, ORANGE]),
+                 str(cartes()[2]))
+        acces = os.path.join(donnees2, "acces.json")
+        verifier("son code est gardé sur l'ordinateur, lisible par la seule session",
+                 os.path.exists(acces) and (compteur.WINDOWS or oct(os.stat(acces).st_mode & 0o777) == "0o600"))
+        verifier("la page ne montre jamais un code d'accès", CODE not in page(47819, "/api/etat")[1])
+        verifier("le compteur n'a rien publié vers elle", "COMMANDE" not in banc.lu("ESSAI00000000M1.log"), banc.lu("ESSAI00000000M1.log"))
+        ajoutee = etat(47819)["reglages"]["imprimantes"][2]
+        verifier("retirée, son code est effacé", poster2("/imprimante/retirer", {"id": ajoutee["id"]})[0] == 200
+                 and CODE not in open(acces, encoding="utf-8").read() and len(cartes()) == 2
+                 and len(etat(47819)["reglages"]["imprimantes"]) == 2, str(etat(47819)["reglages"]["imprimantes"]))
 
         print("Vrai dossier temporaire du système")
         if page(compteur.PORT)[0]:

@@ -16,9 +16,24 @@ jobs:
       PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
+
+      # Les copies installées apprennent qu'une version est parue en lisant version.txt : quand un
+      # fichier installé change, son numéro doit monter, sinon personne n'est prévenu.
+      - name: Le numéro de version monte avec les fichiers installés
+        if: runner.os == 'Linux' && github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+        run: |
+          modifies=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" || true)
+          if echo "$modifies" | grep -qxE 'compteur\.py|page\.html|police\.woff2|alerte\.swift'; then
+            avant=$(git show "${{ github.event.before }}:version.txt" 2>/dev/null | head -1 || echo 0)
+            apres=$(head -1 version.txt)
+            echo "version : ${avant:-0} -> $apres"
+            [ "$apres" -gt "${avant:-0}" ] || { echo "Un fichier installé a changé : montez le numéro de version.txt."; exit 1; }
+          fi
 
       - name: Le compteur, sur de fausses données et une fausse imprimante
         run: python tests/essais.py
