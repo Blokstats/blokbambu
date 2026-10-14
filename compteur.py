@@ -1199,7 +1199,8 @@ class Imprimante(threading.Thread):
                     contexte.load_verify_locations(certificat)
                 except (OSError, ssl.SSLError):
                     pass
-        with contexte.wrap_socket(socket.create_connection((hote, port), timeout=8)) as liaison:
+        # Une imprimante occupée met parfois plus de dix secondes à établir la liaison chiffrée.
+        with contexte.wrap_socket(socket.create_connection((hote, port), timeout=25)) as liaison:
             sujet = dict(x[0] for x in liaison.getpeercert().get("subject", ()))
             if sujet.get("commonName") != self.serie:
                 raise AutreAppareil()
