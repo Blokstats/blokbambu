@@ -2,9 +2,10 @@
 
 Un compteur de fil pour les imprimantes Bambu Lab, sur Mac, Windows et Linux.
 
-- **Fil par couleur** : chaque impression lancée depuis Bambu Studio est notée, avec les grammes et les mètres de chaque fil.
-- **Bobines** : la page montre ce qu'il reste sur chaque bobine, avec sa marque. Un bouton « Nouvelle bobine » la remet à neuf.
-- **Alerte** : une fenêtre vous prévient quand une bobine est chargée, changée ou retirée de l'imprimante, pour penser à mettre la page à jour.
+- **Fil par couleur** : chaque impression lancée depuis Bambu Studio est notée, avec les grammes et les mètres de chaque fil. Une impression arrêtée en route ne compte que pour la part faite.
+- **Bobines** : la page montre ce qu'il reste sur chaque bobine, avec sa marque, son prix et vos bobines en réserve. Un bouton « Nouvelle bobine » la remet à neuf.
+- **Coût** : avec le prix de vos bobines, chaque impression et chaque mois sont chiffrés.
+- **Alertes** : une fenêtre vous prévient quand une bobine est chargée, changée ou retirée de l'imprimante, quand une impression demande plus de fil qu'il n'en reste, et quand la dernière bobine d'une couleur arrive au bout.
 
 Tout tourne sur votre ordinateur. Rien n'est envoyé sur Internet, et BlokBambu n'envoie aucune commande à l'imprimante.
 
@@ -58,24 +59,31 @@ BlokBambu apparaît dans le menu des applications.
 ## S'en servir
 
 1. Ouvrez la page : le raccourci, ou <http://127.0.0.1:47815/>.
-2. Les bobines chargées sur l'imprimante y sont déjà. Pour chacune, cliquez **Suivre cette bobine**, choisissez sa marque (ou ajoutez la vôtre) et indiquez le poids de fil qu'il reste dessus.
-3. Imprimez comme d'habitude depuis Bambu Studio : chaque impression apparaît dans la page, sans la recharger, et se déduit de la bobine de la même couleur.
-4. Quand vous posez une bobine neuve, une fenêtre vous le rappelle : cliquez **Nouvelle bobine** sur la page.
+2. Les bobines chargées sur l'imprimante y sont déjà. Pour chacune, cliquez **Suivre cette bobine**, choisissez sa marque (ou ajoutez la vôtre) et indiquez le poids de fil qu'il reste dessus. Le prix au kilo et le nombre de bobines en réserve sont facultatifs.
+3. Imprimez comme d'habitude depuis Bambu Studio : chaque impression apparaît dans la page, sans la recharger, et se déduit de la bobine qui fournit le fil.
+4. Quand vous posez une bobine neuve, une fenêtre vous le rappelle : cliquez **Nouvelle bobine** sur la page. Elle sort de la réserve.
 
 Sur la page :
 
 - **A1 à A4** sur une bobine : son emplacement sur l'AMS de l'imprimante.
 - **Bientôt vide**, en rose : il reste moins de 100 g.
 - **Imprimante connectée**, en haut à droite : l'alerte de bobine est active.
+- **À racheter**, en haut de page : une bobine bientôt vide dont la réserve est à zéro.
 - Pour corriger un reste qui a dérivé, cliquez **Nouvelle bobine** et saisissez le poids réel.
+- **Modifier**, sur une bobine : sa marque, son prix, sa réserve. Sur une impression : la part réellement imprimée, ou la supprimer.
+- Les bobines Bambu Lab portent une puce : leur reste est lu dessus, sans saisie.
+
+### Depuis le téléphone
+
+Dans les réglages (la roue, en haut à droite), activez « Voir BlokBambu depuis le téléphone ». La page donne alors une adresse et un code à six chiffres : ouvrez l'adresse sur un téléphone relié au même Wi-Fi et saisissez le code. L'ordinateur doit rester allumé, et peut demander d'autoriser les connexions entrantes.
 
 ## À savoir
 
-- Les poids sont ceux que Bambu Studio estime au lancement de l'impression, purge comprise. Une impression annulée en route compte en entier.
-- La couleur retenue est celle réglée dans le projet. Un projet réglé en noir et imprimé avec une bobine orange compte en noir.
+- Les poids sont ceux que Bambu Studio estime au lancement de l'impression, purge comprise. Pour une impression arrêtée en route, BlokBambu retient l'avancement annoncé par l'imprimante : c'est une estimation, que vous pouvez corriger.
+- Le fil est rattaché à la bobine qui l'a vraiment fourni quand l'imprimante est connectée ; sinon, à la couleur réglée dans le projet. Avec plusieurs fils, c'est l'emplacement utilisé de la couleur la plus proche qui est retenu.
 - Seules les impressions lancées depuis Bambu Studio sur cet ordinateur sont comptées. Celles lancées depuis le téléphone ou l'écran de l'imprimante ne le sont pas.
 - L'alerte de bobine demande que l'ordinateur soit allumé et sur le même réseau que l'imprimante.
-- BlokBambu suit une imprimante : celle choisie en dernier dans Bambu Studio.
+- Plusieurs imprimantes sont suivies si Bambu Studio les connaît. Deux bobines de la même couleur et du même type, sur deux imprimantes, comptent comme une seule.
 - La version Mac sert tous les jours. Les versions Windows et Linux passent les mêmes essais automatiques, mais n'ont pas encore tourné avec une vraie imprimante : dites-moi si quelque chose coince.
 
 ## Si quelque chose coince
@@ -112,8 +120,8 @@ Vos données sont gardées. Pour tout effacer, supprimez le dossier `BlokBambu` 
 BlokBambu est un petit programme en Python (`compteur.py`, sans dépendance) qui reste lancé en fond et sert la page (`page.html`).
 
 - **Les impressions.** Quand vous cliquez sur « Imprimer », Bambu Studio écrit sur l'ordinateur le fichier qu'il envoie à l'imprimante. BlokBambu le repère et y lit le poids de chaque fil.
-- **Les bobines.** BlokBambu écoute ce que l'imprimante annonce sur le réseau local, comme le fait Bambu Studio. Pour s'y connecter, il lit le code d'accès que Bambu Studio garde déjà sur l'ordinateur, et vérifie que c'est bien votre imprimante avant de le présenter. Il écoute seulement : il ne peut ni lancer ni arrêter une impression.
-- **La page** n'est visible que depuis votre ordinateur (`127.0.0.1`).
+- **L'imprimante.** BlokBambu écoute ce qu'elle annonce sur le réseau local, comme le fait Bambu Studio : les bobines chargées, l'impression en cours, son avancement, sa fin. Pour s'y connecter, il lit le code d'accès que Bambu Studio garde déjà sur l'ordinateur, et vérifie que c'est bien votre imprimante avant de le présenter. Il écoute seulement : il ne peut ni lancer ni arrêter une impression.
+- **La page** n'est visible que depuis votre ordinateur (`127.0.0.1`), sauf si vous l'ouvrez au téléphone dans les réglages : elle demande alors un code aux autres appareils du réseau.
 
 Le code d'accès n'est recopié nulle part, et aucune donnée ne quitte l'ordinateur.
 

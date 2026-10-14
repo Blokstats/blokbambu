@@ -7,7 +7,8 @@
 <title>BlokBambu</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23ffb400'/%3E%3C/svg%3E">
 <style>
-/* La charte du dashboard BlokCorp : fond #090909 quadrillé, panneaux #111, jaune et rose.
+/* La charte du dashboard BlokCorp : fond #090909 quadrillé, panneaux #111. Peu de couleur :
+   le jaune pour les boutons, le rose pour ce qui demande l'attention.
    Titres et chiffres en Archivo Expanded Black (police libre, livrée avec BlokBambu) : la même
    chez tout le monde. */
 @font-face { font-family:'Titre'; font-weight:900; font-display:swap; src:url('/police.woff2') format('woff2'); }
@@ -17,8 +18,7 @@
   --bg:#090909; --panel:#111111; --panel2:#161616;
   --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.13);
   --text:#e8e4dc; --muted:#8c8a85; --muted2:#b0aea8;
-  --yellow:#ffb400; --yellow-dim:rgba(255,180,0,0.08); --yellow-border:rgba(255,180,0,0.22);
-  --pink:#EF00CA; --r:10px;
+  --yellow:#ffb400; --pink:#EF00CA; --r:10px;
   --titre:'Titre','Arial Black',sans-serif;
 }
 html,body{ min-height:100%; background:var(--bg); color:var(--text);
@@ -28,18 +28,22 @@ body::before{ content:''; position:fixed; inset:0; pointer-events:none; z-index:
     linear-gradient(90deg,rgba(255,255,255,0.03) 1px,transparent 1px);
   background-size:40px 40px; }
 button, input, select { font-family:inherit; }
+[hidden]{ display:none !important; }
 
 /* En-tête */
 header{ height:56px; background:var(--panel); border-bottom:1px solid var(--border);
-  display:flex; align-items:center; padding:0 28px; gap:12px; position:sticky; top:0; z-index:10; }
-.h-nom{ font-family:var(--titre); font-weight:900; font-size:14px; letter-spacing:.04em; color:#fff; }
+  display:flex; align-items:center; padding:0 28px; gap:10px; position:sticky; top:0; z-index:10; }
+.h-nom{ font-family:var(--titre); font-weight:900; font-size:14px; letter-spacing:.04em; color:#fff; margin-right:auto; }
 .h-nom span{ color:var(--yellow); }
-.h-etat{ margin-left:auto; display:flex; align-items:center; gap:7px; background:var(--panel);
-  border:1px solid var(--border); border-radius:7px; color:var(--muted2);
+.h-etat{ display:flex; align-items:center; gap:7px; border:1px solid var(--border); border-radius:7px; color:var(--muted2);
   font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:8px 12px; white-space:nowrap; }
 .h-etat .dot{ width:7px; height:7px; border-radius:50%; background:var(--muted); flex-shrink:0; }
 .h-etat.on{ color:var(--text); border-color:var(--border2); }
 .h-etat.on .dot{ background:var(--pink); animation:pulse 1.6s ease-in-out infinite; }
+.h-bouton{ background:none; border:1px solid var(--border); border-radius:7px; color:var(--muted2); cursor:pointer;
+  width:34px; height:34px; display:flex; align-items:center; justify-content:center; transition:color .15s, border-color .15s; }
+.h-bouton:hover{ color:#fff; border-color:var(--border2); }
+.h-bouton svg{ width:16px; height:16px; display:block; }
 @keyframes pulse{
   0%,100% { opacity:1;   box-shadow:0 0 0 0 rgba(239,0,202,.55); }
   50%     { opacity:.55; box-shadow:0 0 0 5px rgba(239,0,202,0); }
@@ -55,11 +59,11 @@ main{ position:relative; z-index:1; max-width:1100px; margin:0 auto; padding:32p
   letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
 .section-line{ flex:1; height:1px; background:var(--border); }
 
-/* Les trois chiffres du haut */
-.total-row{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
-.total-card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--r); padding:20px 22px; min-width:0; }
+/* Les chiffres du haut */
+.total-row{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+.total-card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--r); padding:18px 20px; min-width:0; }
 .total-label{ font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
-.total-value{ font-family:var(--titre); font-weight:900; font-size:30px; color:#fff; line-height:1.1; margin-top:8px;
+.total-value{ font-family:var(--titre); font-weight:900; font-size:26px; color:#fff; line-height:1.1; margin-top:8px;
   white-space:nowrap; }
 .total-sous{ font-size:12px; color:var(--muted); margin-top:6px; }
 
@@ -70,20 +74,22 @@ main{ position:relative; z-index:1; max-width:1100px; margin:0 auto; padding:32p
 .btn.jaune{ background:var(--yellow); border-color:var(--yellow); color:#000; font-weight:700; }
 .btn.jaune:hover{ background:#ffc233; color:#000; }
 .btn.danger:hover{ color:#e55; border-color:#e55; }
+.btn.petit{ padding:5px 9px; font-size:11px; }
 
 /* Bobines */
 .bobines{ display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:14px; }
 .bobine{ background:var(--panel); border:1px solid var(--border); border-radius:var(--r);
   padding:18px 20px 16px; position:relative; overflow:hidden; display:flex; flex-direction:column; gap:14px; min-width:0; }
 .bobine::before{ content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--c); }
-.bobine.libre{ border-style:dashed; background:rgba(17,17,17,.45); }
+.bobine.libre{ border-style:dashed; background:#0c0c0c; }
 .b-haut{ display:flex; align-items:center; gap:9px; min-width:0; }
 .pastille{ width:11px; height:11px; border-radius:50%; background:var(--c); flex-shrink:0;
   box-shadow:0 0 0 1px rgba(255,255,255,.28); }
 .b-nom{ font-family:var(--titre); font-weight:900; font-size:12px; color:#fff; letter-spacing:.02em;
   text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .b-place{ margin-left:auto; font-family:var(--titre); font-weight:900; font-size:10px; color:var(--text);
-  background:rgba(255,255,255,.06); border:1px solid var(--border2); padding:2px 7px; border-radius:4px; letter-spacing:.04em; }
+  background:rgba(255,255,255,.06); border:1px solid var(--border2); padding:2px 7px; border-radius:4px; letter-spacing:.04em;
+  white-space:nowrap; }
 .b-detail{ font-size:12px; color:var(--muted2); margin-top:-8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .b-reste .n{ font-family:var(--titre); font-weight:900; font-size:24px; color:#fff; line-height:1; }
 .b-reste .l{ font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-top:6px; }
@@ -91,8 +97,10 @@ main{ position:relative; z-index:1; max-width:1100px; margin:0 auto; padding:32p
 .jauge{ height:5px; border-radius:3px; background:rgba(255,255,255,.06); overflow:hidden; }
 .jauge i{ display:block; height:100%; border-radius:3px; background:var(--text); }
 .bobine.bas .jauge i{ background:var(--pink); }
+.b-plus{ font-size:12px; color:var(--muted2); margin-top:-4px; }
+.b-plus .alerte-mot{ color:var(--pink); font-weight:600; }
 .b-actions{ display:flex; gap:8px; margin-top:auto; }
-.b-actions .btn{ flex:1; }
+.b-actions .btn{ flex:1 1 auto; white-space:nowrap; padding:8px 10px; }
 
 /* Listes */
 .table{ background:var(--panel); border:1px solid var(--border); border-radius:var(--r); overflow:hidden; }
@@ -101,6 +109,7 @@ main{ position:relative; z-index:1; max-width:1100px; margin:0 auto; padding:32p
 .l-nom{ min-width:0; }
 .l-nom b{ font-size:13px; font-weight:600; color:#fff; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .l-nom span{ font-size:12px; color:var(--muted2); display:block; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.l-nom .mot{ color:var(--pink); display:inline; margin:0; }
 .l-barre{ flex:1; height:5px; border-radius:3px; background:rgba(255,255,255,.06); overflow:hidden; min-width:40px; }
 .l-barre i{ display:block; height:100%; border-radius:3px; background:var(--muted2); }
 .l-chiffre{ font-family:var(--titre); font-weight:900; font-size:13px; color:#fff; min-width:86px; text-align:right; white-space:nowrap; }
@@ -111,22 +120,32 @@ main{ position:relative; z-index:1; max-width:1100px; margin:0 auto; padding:32p
 .fil .pastille{ width:9px; height:9px; }
 .vide{ text-align:center; color:var(--muted2); font-size:12px; line-height:1.6; padding:34px 20px;
   background:var(--panel); border:1px solid var(--border); border-radius:var(--r); }
-.alerte{ font-size:12px; line-height:1.5; color:var(--text); background:rgba(239,0,202,.07);
-  border:1px solid rgba(239,0,202,.3); border-radius:var(--r); padding:12px 16px; margin-bottom:18px; }
+.alerte{ font-size:13px; line-height:1.5; color:var(--text); background:rgba(239,0,202,.07);
+  border:1px solid rgba(239,0,202,.3); border-radius:var(--r); padding:12px 16px; margin-bottom:14px; }
+.alerte b{ color:var(--pink); }
+.avis{ display:flex; align-items:flex-start; gap:12px; }
+.avis > div{ flex:1; min-width:0; }
+.avis strong{ display:block; color:#fff; font-weight:600; }
+.avis small{ display:block; color:var(--muted); font-size:12px; margin-top:4px; }
+.avis .f-fermer{ margin-left:0; flex-shrink:0; }
+.tout-fermer{ display:flex; justify-content:flex-end; margin:-6px 0 14px; }
 footer{ color:var(--muted); font-size:12px; margin-top:30px; line-height:1.6; }
 
-/* Fiche d'une bobine */
+/* Fiches */
 dialog{ background:var(--panel); color:var(--text); border:1px solid var(--border2); border-radius:14px; padding:0;
   width:min(500px, calc(100vw - 28px)); margin:auto; box-shadow:0 24px 80px rgba(0,0,0,.7); }
 dialog::backdrop{ background:rgba(0,0,0,.7); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
 .f-tete{ display:flex; align-items:center; gap:10px; padding:18px 22px; border-bottom:1px solid var(--border); }
-.f-titre{ font-family:var(--titre); font-weight:900; font-size:13px; color:#fff; letter-spacing:.04em; text-transform:uppercase; }
+.f-titre{ font-family:var(--titre); font-weight:900; font-size:13px; color:#fff; letter-spacing:.04em; text-transform:uppercase;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .f-fermer{ margin-left:auto; background:none; border:1px solid var(--border); border-radius:5px; color:var(--muted2);
   cursor:pointer; font-size:15px; line-height:1; padding:4px 8px; }
 .f-fermer:hover{ color:#fff; border-color:var(--border2); }
 .f-corps{ padding:20px 22px 4px; display:flex; flex-direction:column; gap:20px; }
 .champ > label, .champ > .etiquette{ display:block; font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
   color:var(--muted2); margin-bottom:9px; }
+.aide{ font-size:12px; color:var(--muted); line-height:1.5; margin-top:8px; }
+.deux{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
 .choix{ display:flex; flex-wrap:wrap; gap:7px; }
 .puce{ background:var(--panel2); border:1px solid var(--border); border-radius:7px; color:var(--muted2); cursor:pointer;
   font-size:12px; font-weight:600; padding:7px 11px; transition:color .15s, border-color .15s, background .15s; }
@@ -144,41 +163,48 @@ dialog::backdrop{ background:rgba(0,0,0,.7); backdrop-filter:blur(3px); -webkit-
 .fixe small{ color:var(--muted2); font-weight:400; font-size:12px; }
 .saisie{ background:var(--panel2); border:1px solid var(--border); border-radius:7px; color:#fff; font-size:15px;
   padding:9px 12px; outline:none; transition:border-color .15s; }
-.saisie:focus{ border-color:var(--yellow-border); }
-.poids{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-.poids .saisie{ width:104px; text-align:right; font-variant-numeric:tabular-nums; }
-.poids .unite{ color:var(--muted2); font-size:13px; }
+.saisie:focus{ border-color:rgba(255,180,0,.45); }
+.avec-unite{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.avec-unite .saisie{ width:104px; text-align:right; font-variant-numeric:tabular-nums; }
+.avec-unite .unite{ color:var(--muted2); font-size:13px; }
 .f-pied{ display:flex; align-items:center; gap:10px; padding:18px 22px 20px; }
 .f-pied .espace{ flex:1; }
 .f-erreur{ color:var(--pink); font-size:12px; padding:0 22px; min-height:16px; }
-[hidden]{ display:none !important; }
+.acces{ background:var(--panel2); border:1px solid var(--border); border-radius:9px; padding:14px 16px; display:grid; gap:10px; }
+.acces div{ display:flex; justify-content:space-between; gap:14px; font-size:13px; color:var(--muted2); }
+.acces b{ color:#fff; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:14px; font-weight:600; user-select:all; }
 
+@media (max-width:900px){ .total-row{ grid-template-columns:1fr 1fr; } }
 @media (max-width:760px){
   header{ padding:0 14px; gap:8px; }
   main{ padding:24px 14px 60px; }
-  .total-row{ grid-template-columns:1fr; }
   .h-etat .texte-long{ display:none; }
   .couleur-nom{ width:auto; flex:1; }
   .l-barre, .l-note{ display:none; }
-  .ligne.impression{ flex-direction:column; align-items:flex-start; gap:8px; }
-  .fils{ margin-left:0; justify-content:flex-start; }
+  .ligne.impression{ flex-wrap:wrap; }
+  .ligne.impression .l-nom{ flex:1 1 0; }
+  .ligne.impression .l-nom span{ white-space:normal; }
+  .fils{ margin-left:0; justify-content:flex-start; width:100%; order:3; }
   input, select, button{ font-size:16px; }
 }
+@media (max-width:440px){ .total-row{ grid-template-columns:1fr; } .deux{ grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
 <header>
   <span class="h-nom">BLOK<span>BAMBU</span></span>
   <span class="h-etat" id="imprimante" title=""><span class="dot"></span><span id="imprimanteTexte">Imprimante</span></span>
+  <button class="h-bouton" id="reglages" title="Réglages" aria-label="Réglages" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
 </header>
 
 <main>
-  <div class="alerte" id="alerte" hidden></div>
+  <div id="alertes"></div>
 
   <div class="total-row">
-    <div class="total-card"><div class="total-label">Fil imprimé</div><div class="total-value" id="kFil">—</div><div class="total-sous" id="kDepuis">&nbsp;</div></div>
-    <div class="total-card"><div class="total-label">Impressions</div><div class="total-value" id="kImpressions">—</div><div class="total-sous">lancées depuis Bambu Studio</div></div>
-    <div class="total-card"><div class="total-label">Reste sur les bobines</div><div class="total-value" id="kReste">—</div><div class="total-sous" id="kBobines">&nbsp;</div></div>
+    <div class="total-card"><div class="total-label" id="lFil">Fil ce mois-ci</div><div class="total-value" id="kFil">—</div><div class="total-sous" id="sFil">&nbsp;</div></div>
+    <div class="total-card"><div class="total-label">Impressions</div><div class="total-value" id="kImpressions">—</div><div class="total-sous" id="sImpressions">&nbsp;</div></div>
+    <div class="total-card"><div class="total-label">Coût du fil</div><div class="total-value" id="kCout">—</div><div class="total-sous" id="sCout">&nbsp;</div></div>
+    <div class="total-card"><div class="total-label">Reste sur les bobines</div><div class="total-value" id="kReste">—</div><div class="total-sous" id="sReste">&nbsp;</div></div>
   </div>
 
   <div class="section-head">
@@ -190,17 +216,21 @@ dialog::backdrop{ background:rgba(0,0,0,.7); backdrop-filter:blur(3px); -webkit-
   <div class="section-head"><span class="section-title">Fil utilisé</span><span class="section-line"></span></div>
   <div id="totaux"></div>
 
+  <div class="section-head"><span class="section-title">Par mois</span><span class="section-line"></span></div>
+  <div id="mois"></div>
+
   <div class="section-head"><span class="section-title">Impressions</span><span class="section-line"></span></div>
   <div id="impressions"></div>
 
-  <footer>Poids estimés par Bambu Studio au lancement de chaque impression, purge comprise.<br>
+  <footer>Poids estimés par Bambu Studio au lancement de chaque impression, purge comprise. Une impression arrêtée en route ne compte que pour la part faite.<br>
     BlokBambu ne fait qu'écouter l'imprimante : il ne lui envoie aucune commande.</footer>
 </main>
 
+<!-- Fiche d'une bobine -->
 <dialog id="fiche">
   <form method="dialog" id="formulaire">
     <div class="f-tete"><span class="f-titre" id="fTitre">Nouvelle bobine</span>
-      <button type="button" class="f-fermer" id="fFermer" aria-label="Fermer">×</button></div>
+      <button type="button" class="f-fermer" data-fermer aria-label="Fermer">×</button></div>
     <div class="f-corps">
       <div class="champ" id="cFixe"><span class="etiquette">Fil</span><div class="fixe" id="fFixe"></div></div>
       <div class="champ" id="cCouleur"><span class="etiquette">Couleur</span><div class="choix" id="fCouleurs"></div></div>
@@ -208,25 +238,72 @@ dialog::backdrop{ background:rgba(0,0,0,.7); backdrop-filter:blur(3px); -webkit-
       <div class="champ"><span class="etiquette">Marque</span><div class="choix" id="fMarques"></div>
         <input class="saisie" id="fMarqueLibre" type="text" maxlength="40" placeholder="Nom de la marque" autocomplete="off"
                style="margin-top:10px; width:100%" hidden></div>
-      <div class="champ"><label for="fPoids">Fil sur la bobine</label>
-        <div class="poids"><input class="saisie" id="fPoids" type="number" min="1" max="20000" step="1" value="1000" required>
+      <div class="champ" id="cPoids"><label for="fPoids">Fil sur la bobine</label>
+        <div class="avec-unite"><input class="saisie" id="fPoids" type="number" min="1" max="20000" step="1" value="1000">
           <span class="unite">g</span><div class="choix" id="fPresets"></div></div></div>
+      <div class="deux">
+        <div class="champ"><label for="fPrix">Prix au kilo</label>
+          <div class="avec-unite"><input class="saisie" id="fPrix" type="number" min="0" max="1000" step="0.01" placeholder="—">
+            <span class="unite">€</span></div></div>
+        <div class="champ"><label for="fReserve">Bobines en réserve</label>
+          <div class="avec-unite"><input class="saisie" id="fReserve" type="number" min="0" max="99" step="1" placeholder="—"></div></div>
+      </div>
+      <div class="aide" id="fAide" style="margin-top:-10px"></div>
     </div>
     <div class="f-erreur" id="fErreur"></div>
     <div class="f-pied">
       <button type="button" class="btn danger" id="fRetirer">Ne plus suivre</button>
       <span class="espace"></span>
-      <button type="button" class="btn" id="fAnnuler">Annuler</button>
-      <button type="submit" class="btn jaune" id="fValider">Enregistrer</button>
+      <button type="button" class="btn" data-fermer>Annuler</button>
+      <button type="submit" class="btn jaune">Enregistrer</button>
     </div>
   </form>
+</dialog>
+
+<!-- Fiche d'une impression -->
+<dialog id="ficheImpression">
+  <form method="dialog" id="formulaireImpression">
+    <div class="f-tete"><span class="f-titre" id="iTitre">Impression</span>
+      <button type="button" class="f-fermer" data-fermer aria-label="Fermer">×</button></div>
+    <div class="f-corps">
+      <div class="champ"><label for="iPart">Part imprimée</label>
+        <div class="avec-unite"><input class="saisie" id="iPart" type="number" min="0" max="100" step="1" value="100">
+          <span class="unite">%</span><div class="choix" id="iPresets"></div></div>
+        <div class="aide">Une impression arrêtée en route ne compte que pour la part faite. À 0 %, elle ne compte plus de fil.</div></div>
+    </div>
+    <div class="f-erreur" id="iErreur"></div>
+    <div class="f-pied">
+      <button type="button" class="btn danger" id="iSupprimer">Supprimer</button>
+      <span class="espace"></span>
+      <button type="button" class="btn" data-fermer>Annuler</button>
+      <button type="submit" class="btn jaune">Enregistrer</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Réglages -->
+<dialog id="ficheReglages">
+  <div class="f-tete"><span class="f-titre">Réglages</span>
+    <button type="button" class="f-fermer" data-fermer aria-label="Fermer">×</button></div>
+  <div class="f-corps">
+    <div class="champ"><span class="etiquette">Voir BlokBambu depuis le téléphone</span>
+      <div class="choix"><button type="button" class="puce" id="rOui">Activé</button><button type="button" class="puce" id="rNon">Désactivé</button></div>
+      <div class="aide" id="rAide">Les appareils du même Wi-Fi pourront ouvrir cette page, après avoir saisi un code.</div></div>
+    <div class="acces" id="rAcces" hidden>
+      <div><span>Adresse à ouvrir sur le téléphone</span><b id="rAdresse"></b></div>
+      <div><span>Code à saisir</span><b id="rCode"></b></div>
+    </div>
+  </div>
+  <div class="f-erreur" id="rErreur"></div>
+  <div class="f-pied"><span class="espace"></span><button type="button" class="btn jaune" data-fermer>Fermer</button></div>
 </dialog>
 
 <script>
 "use strict";
 var MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 var PRESETS = [1000, 750, 500, 250];
-var etat = null, brut = "", fiche = null;
+var PARTS = [100, 75, 50, 25, 0];
+var etat = null, brut = "", fiche = null, impression = null;
 
 function $(id) { return document.getElementById(id); }
 function e(t) { return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) {
@@ -236,6 +313,7 @@ function poids(g) {
   if (g >= 1000) return nombre(g / 1000, 2).replace(/,?0+$/, "") + " kg";
   return nombre(g, g < 100 ? 1 : 0).replace(/,0$/, "") + " g";
 }
+function euros(x) { return nombre(x, 2) + " €"; }
 function longueur(m) { return nombre(m, m < 100 ? 1 : 0) + " m"; }
 function duree(s) { var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
   return h ? h + " h " + (m < 10 ? "0" : "") + m : Math.max(m, 1) + " min"; }
@@ -243,6 +321,8 @@ function jour(iso, annee) { var d = new Date(iso);
   return d.getDate() + " " + MOIS[d.getMonth()] + (annee ? " " + d.getFullYear() : ""); }
 function heure(iso) { var d = new Date(iso), m = d.getMinutes(); return d.getHours() + " h " + (m < 10 ? "0" : "") + m; }
 function pastille(c) { return '<span class="pastille" style="--c:' + e(c) + '"></span>'; }
+function pluriel(n, mot) { return n + " " + mot + (n > 1 ? "s" : ""); }
+function majuscule(t) { return t.charAt(0).toUpperCase() + t.slice(1); }
 
 function ecrire(id, texte) {
   var el = $(id);
@@ -253,35 +333,64 @@ function ecrire(id, texte) {
 }
 
 function rendre() {
-  var s = etat, r = s.resume;
-  // Imprimante
-  var p = $("imprimante");
-  p.classList.toggle("on", s.imprimante.etat === "connectee");
-  p.title = s.imprimante.texte;
-  $("imprimanteTexte").innerHTML = 'Imprimante<span class="texte-long"> ' + e(s.imprimante.court) + "</span>";
-  var alerte = $("alerte");
-  alerte.hidden = !s.imprimante.alerte;
-  alerte.textContent = s.imprimante.alerte ? s.imprimante.texte : "";
+  var s = etat, r = s.resume, h;
 
-  // Chiffres du haut
-  ecrire("kFil", poids(r.g));
-  $("kDepuis").textContent = r.depuis ? "depuis le " + jour(r.depuis, true) : "aucune impression pour l'instant";
-  ecrire("kImpressions", String(r.impressions));
+  // Imprimantes
+  var liste = s.imprimantes, reliees = liste.filter(function (i) { return i.etat === "connectee"; }).length;
+  var p = $("imprimante"), texte;
+  if (!liste.length) texte = "Imprimante<span class=\"texte-long\"> non suivie</span>";
+  else if (liste.length === 1) texte = "Imprimante<span class=\"texte-long\"> " + e(liste[0].court) + "</span>";
+  else texte = reliees + " sur " + liste.length + "<span class=\"texte-long\"> imprimantes connectées</span>";
+  p.classList.toggle("on", liste.length > 0 && reliees === liste.length);
+  p.title = liste.length ? liste.map(function (i) { return (liste.length > 1 ? i.nom + " : " : "") + i.texte; }).join("\n")
+    : "Bambu Studio n'a pas de code d'accès pour une imprimante : pas d'alerte de bobine.";
+  $("imprimanteTexte").innerHTML = texte;
+  $("reglages").hidden = !s.local;
+
+  // Ce qui demande l'attention
+  h = "";
+  liste.forEach(function (i) { if (i.alerte) h += '<div class="alerte">' + e((liste.length > 1 ? i.nom + " : " : "") + i.texte) + "</div>"; });
+  s.alertes.forEach(function (a) {
+    var lignes = a.texte.split("\n");
+    h += '<div class="alerte avis"><div><strong>' + e(lignes[0]) + "</strong>" + lignes.slice(1).map(e).join("<br>") +
+      "<small>" + jour(a.date, true) + " à " + heure(a.date) + '</small></div>' +
+      '<button class="f-fermer" data-alerte="' + e(a.id) + '" aria-label="Fermer cette alerte">×</button></div>';
+  });
+  if (s.alertes.length > 1) h += '<div class="tout-fermer"><button class="btn petit" data-alerte="toutes">Tout fermer</button></div>';
+  if (s.a_racheter.length) h += '<div class="alerte"><b>À racheter</b> — bientôt vide et plus de réserve : ' + e(s.a_racheter.join(", ")) + ".</div>";
+  $("alertes").innerHTML = h;
+
+  // Chiffres du haut : le mois en cours, et le total en dessous
+  $("lFil").textContent = "Fil en " + r.mois.nom;
+  ecrire("kFil", poids(r.mois.g));
+  $("sFil").textContent = r.depuis ? poids(r.g) + " depuis le " + jour(r.depuis, true) : "aucune impression pour l'instant";
+  ecrire("kImpressions", String(r.mois.impressions));
+  $("sImpressions").textContent = "en " + r.mois.nom + " · " + r.impressions + " au total";
+  ecrire("kCout", r.mois.cout == null ? "—" : euros(r.mois.cout));
+  $("sCout").textContent = r.cout == null ? "indiquez le prix de vos bobines" : "en " + r.mois.nom + " · " + euros(r.cout) + " au total";
   ecrire("kReste", s.bobines.length ? poids(r.reste) : "—");
-  $("kBobines").textContent = s.bobines.length ? s.bobines.length + (s.bobines.length > 1 ? " bobines suivies" : " bobine suivie") : "aucune bobine suivie";
+  $("sReste").textContent = s.bobines.length ? pluriel(s.bobines.length, "bobine") + (s.bobines.length > 1 ? " suivies" : " suivie") : "aucune bobine suivie";
 
   // Bobines
-  var h = "";
+  h = "";
   s.bobines.forEach(function (b) {
     var detail = [b.marque, b.type].filter(Boolean).join(" · ");
+    var plus = [];
+    if (b.reserve != null) plus.push(b.reserve === 0 ? '<span class="' + (b.bas ? "alerte-mot" : "") + '">plus de réserve</span>' : pluriel(b.reserve, "bobine") + " en réserve");
+    if (b.prix) plus.push(euros(b.prix) + " le kilo");
+    var etiquette = b.reste <= 0 ? "Vide" : b.bas ? "Bientôt vide" : "Restants";
+    etiquette += b.source === "puce" ? " · lu sur la puce" : b.depuis ? " · posée le " + jour(b.depuis, false) : "";
     h += '<div class="bobine' + (b.bas ? " bas" : "") + '" style="--c:' + e(b.couleur) + '">' +
       '<div class="b-haut">' + pastille(b.couleur) + '<span class="b-nom">' + e(b.nom) + "</span>" +
       (b.emplacements.length ? '<span class="b-place">' + e(b.emplacements.join(" ")) + "</span>" : "") + "</div>" +
       '<div class="b-detail">' + e(detail || "Marque non renseignée") + "</div>" +
-      '<div class="b-reste"><div class="n">' + poids(Math.max(b.reste, 0)) + '</div><div class="l">' +
-      (b.reste <= 0 ? "Vide" : b.bas ? "Bientôt vide" : "Restants") + " · posée le " + jour(b.depuis, false) + "</div></div>" +
+      '<div class="b-reste"><div class="n">' + poids(Math.max(b.reste, 0)) + '</div><div class="l">' + etiquette + "</div></div>" +
       '<div class="jauge"><i style="width:' + (100 * b.part).toFixed(1) + '%"></i></div>' +
-      '<div class="b-actions"><button class="btn" data-fiche="' + e(b.cle) + '">Nouvelle bobine</button></div></div>';
+      (plus.length ? '<div class="b-plus">' + plus.join(" · ") + "</div>" : "") +
+      '<div class="b-actions">' + (b.suivie
+        ? '<button class="btn" data-fiche="' + e(b.cle) + '" data-mode="nouvelle">Nouvelle bobine</button>' +
+          '<button class="btn" data-fiche="' + e(b.cle) + '" data-mode="modifier">Modifier</button>'
+        : '<button class="btn" data-fiche="' + e(b.cle) + '" data-mode="suivre">Prix et réserve</button>') + "</div></div>";
   });
   s.a_suivre.forEach(function (b) {
     h += '<div class="bobine libre" style="--c:' + e(b.couleur) + '">' +
@@ -291,7 +400,7 @@ function rendre() {
       '<div class="b-reste"><div class="n" style="color:var(--muted)">—</div><div class="l">' +
       (b.emplacements.length ? "Sur l'imprimante, pas suivie" : "Imprimée, pas suivie") + "</div></div>" +
       '<div class="jauge"><i style="width:0"></i></div>' +
-      '<div class="b-actions"><button class="btn jaune" data-fiche="' + e(b.cle) + '">Suivre cette bobine</button></div></div>';
+      '<div class="b-actions"><button class="btn jaune" data-fiche="' + e(b.cle) + '" data-mode="suivre">Suivre cette bobine</button></div></div>';
   });
   $("bobines").innerHTML = h ? '<div class="bobines">' + h + "</div>" :
     '<div class="vide">Aucune bobine suivie.<br>Ajoutez celles que vous utilisez : chaque impression s\'en déduira.</div>';
@@ -300,33 +409,59 @@ function rendre() {
   h = "";
   var maxi = Math.max.apply(null, s.totaux.map(function (t) { return t.g; }).concat([1]));
   s.totaux.forEach(function (t) {
-    h += '<div class="ligne" style="--c:' + e(t.couleur) + '">' + pastille(t.couleur) +
+    h += '<div class="ligne">' + pastille(t.couleur) +
       '<div class="l-nom couleur-nom"><b>' + e(t.nom) + "</b><span>" + e([t.type].concat(t.fils).filter(Boolean).join(" · ")) + "</span></div>" +
       '<div class="l-barre"><i style="width:' + Math.max(100 * t.g / maxi, 1).toFixed(1) + '%"></i></div>' +
-      '<div class="l-note">' + longueur(t.m) + " · " + t.n + (t.n > 1 ? " impressions" : " impression") + "</div>" +
+      '<div class="l-note">' + longueur(t.m) + " · " + pluriel(t.n, "impression") + "</div>" +
       '<div class="l-chiffre">' + poids(t.g) + "</div></div>";
   });
   $("totaux").innerHTML = h ? '<div class="table">' + h + "</div>" :
     '<div class="vide">Lancez une impression depuis Bambu Studio sur cet ordinateur :<br>elle apparaîtra ici, avec le fil utilisé par couleur.</div>';
 
+  // Par mois
+  h = "";
+  maxi = Math.max.apply(null, s.mois.map(function (m) { return m.g; }).concat([1]));
+  s.mois.forEach(function (m) {
+    h += '<div class="ligne"><div class="l-nom couleur-nom"><b>' + e(majuscule(m.nom)) + "</b><span>" + pluriel(m.impressions, "impression") + "</span></div>" +
+      '<div class="l-barre"><i style="width:' + Math.max(100 * m.g / maxi, 1).toFixed(1) + '%"></i></div>' +
+      '<div class="l-note">' + (m.cout == null ? "" : euros(m.cout)) + "</div>" +
+      '<div class="l-chiffre">' + poids(m.g) + "</div></div>";
+  });
+  $("mois").innerHTML = h ? '<div class="table">' + h + "</div>" : '<div class="vide">Les totaux de chaque mois apparaîtront ici.</div>';
+
   // Impressions
   h = "";
   s.impressions.forEach(function (i) {
-    h += '<div class="ligne impression"><div class="l-nom"><b>' + e(i.projet) + "</b><span>" +
-      jour(i.date, true) + " à " + heure(i.date) + " · " + duree(i.secondes) + "</span></div>" +
-      '<div class="fils">' + i.fils.map(function (f) { return '<span class="fil">' + pastille(f.couleur) + poids(f.g) + "</span>"; }).join("") +
-      "</div></div>";
+    var notes = [jour(i.date, true) + " à " + heure(i.date), duree(i.secondes)];
+    if (i.en_cours != null) notes.push('<span class="mot">en cours, ' + i.en_cours + " %</span>");
+    else if (i.part < 1) notes.push('<span class="mot">arrêtée à ' + Math.round(i.part * 100) + " %</span>");
+    if (i.cout != null) notes.push(euros(i.cout));
+    h += '<div class="ligne impression"><div class="l-nom"><b>' + e(i.projet) + "</b><span>" + notes.join(" · ") + "</span></div>" +
+      '<div class="fils">' + i.fils.map(function (f) { return '<span class="fil">' + pastille(f.couleur) + poids(f.g) + "</span>"; }).join("") + "</div>" +
+      '<button class="btn petit" data-impression="' + e(i.id) + '">Modifier</button></div>';
   });
   $("impressions").innerHTML = h ? '<div class="table">' + h + "</div>" : '<div class="vide">Aucune impression comptée pour l\'instant.</div>';
+
+  if ($("ficheReglages").open) dessinerReglages();
 }
 
 function charger() {
-  return fetch("/api/etat", { cache: "no-store" }).then(function (r) { return r.text(); }).then(function (t) {
+  return fetch("/api/etat", { cache: "no-store" }).then(function (r) {
+    if (r.redirected || !r.ok) { location.reload(); throw new Error("accès"); }
+    return r.text();
+  }).then(function (t) {
     if (t === brut) return;
     brut = t; etat = JSON.parse(t); rendre();
   }).catch(function () {
-    var p = $("imprimante"); p.classList.remove("on"); p.title = "BlokBambu ne répond plus sur cet ordinateur.";
+    var p = $("imprimante"); p.classList.remove("on"); p.title = "BlokBambu ne répond plus.";
     $("imprimanteTexte").textContent = "BlokBambu arrêté";
+  });
+}
+
+function envoyer(chemin, champs) {
+  return fetch(chemin, { method: "POST", body: new URLSearchParams(champs) }).then(function (r) {
+    if (!r.ok) throw new Error("refus");
+    return charger();
   });
 }
 
@@ -338,23 +473,27 @@ function trouver(cle) {
   return null;
 }
 
-function ouvrir(cle) {
+function ouvrir(cle, mode) {
   var b = cle ? trouver(cle) : null;
-  var suivie = b && etat.bobines.some(function (x) { return x.cle === cle; });
-  fiche = { cle: cle || null, couleur: b ? b.couleur : null, type: b ? b.type : "PLA",
+  fiche = { mode: b ? mode : "ajouter", couleur: b ? b.couleur : null, type: b ? b.type : "PLA",
             marque: b ? b.marque || "" : "", nouvelleMarque: false };
-  $("fTitre").textContent = !b ? "Ajouter une bobine" : suivie ? "Nouvelle bobine" : "Suivre cette bobine";
+  $("fTitre").textContent = { ajouter: "Ajouter une bobine", suivre: "Suivre cette bobine", nouvelle: "Nouvelle bobine", modifier: "Modifier la bobine" }[fiche.mode];
   $("cFixe").hidden = !b; $("cCouleur").hidden = !!b; $("cType").hidden = !!b;
+  $("cPoids").hidden = fiche.mode === "modifier";
   if (b) $("fFixe").innerHTML = pastille(b.couleur) + e(b.nom) + " <small>" + e(b.type) +
     (b.emplacements.length ? " · emplacement " + e(b.emplacements.join(", ")) : "") + "</small>";
-  $("fRetirer").hidden = !suivie;
-  $("fPoids").value = 1000;
+  $("fRetirer").hidden = !(b && b.suivie);
+  $("fPoids").value = b && fiche.mode === "suivre" && b.source === "puce" ? Math.round(b.poids) : 1000;
+  $("fPrix").value = b && b.prix ? b.prix : "";
+  // Une bobine neuve sort de la réserve.
+  var reserve = b && b.reserve != null ? b.reserve : null;
+  if (reserve != null && fiche.mode === "nouvelle" && reserve > 0) reserve -= 1;
+  $("fReserve").value = reserve == null ? "" : reserve;
+  $("fAide").textContent = fiche.mode === "nouvelle" && b && b.reserve > 0 ? "La bobine neuve sort de la réserve : " + b.reserve + " → " + reserve + "."
+    : "Le prix sert à chiffrer chaque impression. La réserve compte vos bobines neuves en attente ; laissez vide pour ne pas la suivre.";
   $("fMarqueLibre").value = ""; $("fMarqueLibre").hidden = true;
   $("fErreur").textContent = "";
-  if (!b) {
-    var premiere = etat.couleurs[0];
-    if (premiere) { fiche.couleur = premiere.couleur; fiche.type = premiere.type; }
-  }
+  if (!b && etat.couleurs[0]) { fiche.couleur = etat.couleurs[0].couleur; fiche.type = etat.couleurs[0].type; }
   dessinerFiche();
   $("fiche").showModal();
 }
@@ -378,16 +517,12 @@ function dessinerFiche() {
     return '<button type="button" class="puce' + (!f.nouvelleMarque && m === f.marque ? " active" : "") + '" data-marque="' + e(m) + '">' + e(m) + "</button>"; }).join("") +
     '<button type="button" class="puce plus' + (f.nouvelleMarque ? " active" : "") + '" data-marque-nouvelle="1">+ Nouvelle marque</button>';
   $("fMarqueLibre").hidden = !f.nouvelleMarque;
-  var p = Number($("fPoids").value);
-  $("fPresets").innerHTML = PRESETS.map(function (g) {
-    return '<button type="button" class="puce' + (g === p ? " active" : "") + '" data-poids="' + g + '">' + poids(g) + "</button>"; }).join("");
+  presets("fPresets", PRESETS, Number($("fPoids").value), poids);
 }
 
-function envoyer(chemin, champs) {
-  return fetch(chemin, { method: "POST", body: new URLSearchParams(champs) }).then(function (r) {
-    if (!r.ok) throw new Error("refus");
-    return charger();
-  });
+function presets(id, valeurs, choisie, texte) {
+  $(id).innerHTML = valeurs.map(function (v) {
+    return '<button type="button" class="puce' + (v === choisie ? " active" : "") + '" data-valeur="' + v + '">' + texte(v) + "</button>"; }).join("");
 }
 
 $("fiche").addEventListener("click", function (ev) {
@@ -397,18 +532,13 @@ $("fiche").addEventListener("click", function (ev) {
   else if (c.dataset.type && c.classList.contains("puce")) { fiche.type = c.dataset.type; dessinerFiche(); }
   else if (c.dataset.marque) { fiche.marque = fiche.marque === c.dataset.marque && !fiche.nouvelleMarque ? "" : c.dataset.marque; fiche.nouvelleMarque = false; dessinerFiche(); }
   else if (c.dataset.marqueNouvelle) { fiche.nouvelleMarque = !fiche.nouvelleMarque; dessinerFiche(); if (fiche.nouvelleMarque) $("fMarqueLibre").focus(); }
-  else if (c.dataset.poids) { $("fPoids").value = c.dataset.poids; dessinerFiche(); }
+  else if (c.dataset.valeur) { $("fPoids").value = c.dataset.valeur; dessinerFiche(); }
 });
 $("fiche").addEventListener("input", function (ev) {
-  if (ev.target.id === "fCouleurLibre") { fiche.couleur = ev.target.value.toUpperCase(); }
-  if (ev.target.id === "fPoids") {
-    var p = Number(ev.target.value);
-    Array.prototype.forEach.call($("fPresets").children, function (b) { b.classList.toggle("active", Number(b.dataset.poids) === p); });
-  }
+  if (ev.target.id === "fCouleurLibre") fiche.couleur = ev.target.value.toUpperCase();
+  if (ev.target.id === "fPoids") presets("fPresets", PRESETS, Number(ev.target.value), poids);
 });
 $("fiche").addEventListener("change", function (ev) { if (ev.target.id === "fCouleurLibre") dessinerFiche(); });
-$("fFermer").addEventListener("click", function () { $("fiche").close(); });
-$("fAnnuler").addEventListener("click", function () { $("fiche").close(); });
 $("fRetirer").addEventListener("click", function () {
   envoyer("/retirer", { couleur: fiche.couleur, type: fiche.type }).then(function () { $("fiche").close(); })
     .catch(function () { $("fErreur").textContent = "BlokBambu n'a pas pu enregistrer."; });
@@ -419,20 +549,81 @@ $("formulaire").addEventListener("submit", function (ev) {
   var grammes = Number($("fPoids").value);
   if (!fiche.couleur) { $("fErreur").textContent = "Choisissez une couleur."; return; }
   if (fiche.nouvelleMarque && !marque) { $("fErreur").textContent = "Écrivez le nom de la marque."; $("fMarqueLibre").focus(); return; }
-  if (!(grammes > 0)) { $("fErreur").textContent = "Indiquez le poids de fil sur la bobine."; return; }
-  envoyer("/bobine", { couleur: fiche.couleur, type: fiche.type, poids: String(grammes), marque: marque })
+  if (fiche.mode !== "modifier" && !(grammes > 0)) { $("fErreur").textContent = "Indiquez le poids de fil sur la bobine."; return; }
+  var champs = { couleur: fiche.couleur, type: fiche.type, marque: marque, prix: $("fPrix").value, reserve: $("fReserve").value };
+  if (fiche.mode !== "modifier") champs.poids = String(grammes);
+  envoyer(fiche.mode === "modifier" ? "/bobine/modifier" : "/bobine", champs)
     .then(function () { $("fiche").close(); })
-    .catch(function () { $("fErreur").textContent = "BlokBambu n'a pas pu enregistrer."; });
+    .catch(function () { $("fErreur").textContent = "BlokBambu n'a pas pu enregistrer : vérifiez le prix et la réserve."; });
 });
-document.addEventListener("click", function (ev) {
-  var b = ev.target.closest("[data-fiche]");
-  if (b && etat) ouvrir(b.dataset.fiche);
-});
-$("ajouter").addEventListener("click", function () { if (etat) ouvrir(null); });
 
+// ---------------------------------------------------------------- fiche d'une impression
+
+function ouvrirImpression(id) {
+  impression = null;
+  etat.impressions.forEach(function (i) { if (i.id === id) impression = i; });
+  if (!impression) return;
+  $("iTitre").textContent = impression.projet;
+  $("iPart").value = Math.round(impression.part * 100);
+  $("iErreur").textContent = "";
+  presets("iPresets", PARTS, Number($("iPart").value), function (v) { return v + " %"; });
+  $("ficheImpression").showModal();
+}
+$("ficheImpression").addEventListener("click", function (ev) {
+  var c = ev.target.closest("button");
+  if (c && c.dataset.valeur) { $("iPart").value = c.dataset.valeur; presets("iPresets", PARTS, Number(c.dataset.valeur), function (v) { return v + " %"; }); }
+});
+$("iPart").addEventListener("input", function () { presets("iPresets", PARTS, Number($("iPart").value), function (v) { return v + " %"; }); });
+$("iSupprimer").addEventListener("click", function () {
+  envoyer("/impression/supprimer", { id: impression.id }).then(function () { $("ficheImpression").close(); })
+    .catch(function () { $("iErreur").textContent = "BlokBambu n'a pas pu enregistrer."; });
+});
+$("formulaireImpression").addEventListener("submit", function (ev) {
+  ev.preventDefault();
+  var p = Number($("iPart").value);
+  if (!(p >= 0 && p <= 100) || $("iPart").value === "") { $("iErreur").textContent = "Indiquez une part entre 0 et 100 %."; return; }
+  envoyer("/impression", { id: impression.id, part: String(p) }).then(function () { $("ficheImpression").close(); })
+    .catch(function () { $("iErreur").textContent = "BlokBambu n'a pas pu enregistrer."; });
+});
+
+// ---------------------------------------------------------------- réglages
+
+function dessinerReglages() {
+  var r = etat.reglages || {};
+  $("rOui").classList.toggle("active", !!r.reseau);
+  $("rNon").classList.toggle("active", !r.reseau);
+  $("rAcces").hidden = !r.reseau;
+  $("rAdresse").textContent = r.adresse || "ordinateur hors réseau";
+  $("rCode").textContent = r.code || "";
+  $("rAide").textContent = r.reseau
+    ? "Ouvrez cette adresse sur un téléphone relié au même Wi-Fi, puis saisissez le code. Si l'ordinateur demande d'autoriser les connexions entrantes, acceptez."
+    : "Les appareils du même Wi-Fi pourront ouvrir cette page, après avoir saisi un code.";
+}
+function regler(actif) {
+  envoyer("/reglages", { reseau: actif ? "1" : "0" }).then(dessinerReglages)
+    .catch(function () { $("rErreur").textContent = "BlokBambu n'a pas pu enregistrer."; });
+}
+$("rOui").addEventListener("click", function () { regler(true); });
+$("rNon").addEventListener("click", function () { regler(false); });
+$("reglages").addEventListener("click", function () { if (etat) { $("rErreur").textContent = ""; dessinerReglages(); $("ficheReglages").showModal(); } });
+
+// ---------------------------------------------------------------- commun
+
+document.addEventListener("click", function (ev) {
+  var b = ev.target.closest("[data-fiche], [data-impression], [data-fermer], [data-alerte]");
+  if (!b) return;
+  if (b.dataset.fermer !== undefined) { b.closest("dialog").close(); return; }
+  if (b.dataset.alerte) { envoyer("/alerte/fermer", { id: b.dataset.alerte }); return; }
+  if (!etat) return;
+  if (b.dataset.fiche) ouvrir(b.dataset.fiche, b.dataset.mode);
+  else ouvrirImpression(b.dataset.impression);
+});
+$("ajouter").addEventListener("click", function () { if (etat) ouvrir(null, "ajouter"); });
+
+function occupe() { return $("fiche").open || $("ficheImpression").open; }
 charger();
-setInterval(function () { if (!document.hidden && !$("fiche").open) charger(); }, 3000);
-document.addEventListener("visibilitychange", function () { if (!document.hidden) charger(); });
+setInterval(function () { if (!document.hidden && !occupe()) charger(); }, 3000);
+document.addEventListener("visibilitychange", function () { if (!document.hidden && !occupe()) charger(); });
 </script>
 </body>
 </html>
