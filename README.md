@@ -72,6 +72,7 @@ BlokBambu apparaît dans le menu des applications.
 - **+ Ajouter une bobine** accepte une couleur déjà suivie : deux bobines blanches de marques ou de prix différents se suivent séparément. Une impression se déduit de celle qui est sur l'imprimante ; vous pouvez changer de bobine dans la fiche de l'impression.
 - **Bientôt vide**, en rose : il reste moins de 100 g. Ce seuil se change dans les réglages.
 - **À racheter**, en haut de page : une bobine bientôt vide dont la réserve est à zéro.
+- **Bobine finie en pleine impression** : posez la neuve et cliquez **Nouvelle bobine** (ou posez une autre bobine suivie sur cet emplacement). Elle prend le relais : la suite de l'impression se déduit d'elle, à partir de l'avancement où l'ancienne s'est vidée. Quand l'AMS passe tout seul sur une autre bobine du même fil, c'est noté aussi. La fiche de l'impression permet de le corriger, ou de le dire à la main (« Bobine changée en cours d'impression »).
 - Pour corriger un reste qui a dérivé, cliquez **Nouvelle bobine** et saisissez le poids réel.
 - Les bobines Bambu Lab portent une puce : leur reste est lu dessus, sans saisie.
 
@@ -87,7 +88,7 @@ Avec plusieurs imprimantes, chaque impression porte le nom de la sienne et la li
 
 ### Les impressions
 
-- **Modifier**, sur une impression : la part réellement imprimée, la bobine qui a fourni chaque fil, l'imprimante, ou la supprimer.
+- **Modifier**, sur une impression : la part réellement imprimée, la bobine qui a fourni chaque fil (et celle qui a pris le relais en cours de route), l'imprimante, ou la supprimer.
 - **+ Ajouter une impression** : pour noter à la main une impression que BlokBambu n'a pas vue.
 - Une impression lancée **depuis le téléphone ou l'écran de l'imprimante** apparaît d'elle-même, avec son nom, son heure, son avancement et l'emplacement utilisé. Son poids n'est pas connu : cliquez **Compléter** pour l'indiquer.
 - Pour ne pas avoir à le saisir, activez dans les réglages « Poids des impressions lancées ailleurs : lu sur l'imprimante ». Une fois l'impression finie, BlokBambu lit alors son fichier sur la carte mémoire de l'imprimante. Il ne fait que lire.

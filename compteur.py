@@ -314,31 +314,51 @@ def comptees(journal):
     return [e for e in journal if not e.get("supprimee")]
 
 
+def troncons(entree, f):
+    """Ce que chaque bobine a fourni d'un fil : [(bobine, part de l'impression, prix au kilo)].
+
+    Une bobine changée en cours d'impression laisse la suite à celle qui prend le relais (`relais` :
+    à partir de telle part de l'impression, telle bobine). Seule la part imprimée compte.
+    """
+    p = part(entree)
+    bornes = [(0.0, f.get("bobine"), f.get("prix_kg"))] + [
+        (r["a"], r.get("bobine"), r.get("prix_kg")) for r in sorted(f.get("relais") or [], key=lambda r: r["a"])]
+    sortie = []
+    for rang, (debut, bobine, prix) in enumerate(bornes):
+        fin = bornes[rang + 1][0] if rang + 1 < len(bornes) else 1.0
+        if min(fin, p) > debut:
+            sortie.append((bobine, min(fin, p) - debut, prix))
+    return sortie
+
+
 def restes(journal, bobines):
     """Ce qu'il reste sur chaque bobine suivie, d'après les impressions qui s'en sont servies."""
     r = {ident: float(b["poids"]) for ident, b in bobines.items()}
     for entree in comptees(journal):
         for f in entree["fils"]:
-            if f.get("bobine") in r:
-                r[f["bobine"]] -= f["g"] * part(entree)
+            for bobine, morceau, _ in troncons(entree, f):
+                if bobine in r:
+                    r[bobine] -= f["g"] * morceau
     return r
 
 
 def poser_prix(entree, bobines):
     """Note sur chaque fil le prix au kilo de sa bobine : le coût d'une impression ne bouge plus ensuite."""
     for f in entree["fils"]:
-        if not f.get("bobine"):
-            f.pop("prix_kg", None)
-        elif f["bobine"] in bobines:  # une bobine remplacée depuis : le prix noté alors est gardé
-            if bobines[f["bobine"]].get("prix"):
-                f["prix_kg"] = bobines[f["bobine"]]["prix"]
-            else:
-                f.pop("prix_kg", None)
+        for porteur in [f] + list(f.get("relais") or []):
+            if not porteur.get("bobine"):
+                porteur.pop("prix_kg", None)
+            elif porteur["bobine"] in bobines:  # une bobine remplacée depuis : le prix noté alors est gardé
+                if bobines[porteur["bobine"]].get("prix"):
+                    porteur["prix_kg"] = bobines[porteur["bobine"]]["prix"]
+                else:
+                    porteur.pop("prix_kg", None)
 
 
 def cout(entree):
     """Coût du fil d'une impression, ou None si aucun de ses fils n'a de prix."""
-    prix = [f["g"] * part(entree) * f["prix_kg"] / 1000 for f in entree["fils"] if f.get("prix_kg")]
+    prix = [f["g"] * morceau * prix_kg / 1000 for f in entree["fils"]
+            for _, morceau, prix_kg in troncons(entree, f) if prix_kg]
     return round(sum(prix), 2) if prix else None
 
 
@@ -408,6 +428,9 @@ def attribuer_bacs(entree, utilises, bobines, fin):
         else:
             memes = [u for u in utilises if u["type"] == origine["type"]] or utilises
             choix = min(memes, key=lambda u: ecart(u["couleur"], origine["couleur"]))
+        if choix.get("bac") and f.get("bac") != choix["bac"]:
+            f["bac"] = choix["bac"]
+            change = True
         if (choix["couleur"], choix["type"], choix.get("bobine")) != (f["couleur"], f["type"], f.get("bobine")):
             if (choix["couleur"], choix["type"]) != (origine["couleur"], origine["type"]):
                 f["projet"] = origine
@@ -416,6 +439,75 @@ def attribuer_bacs(entree, utilises, bobines, fin):
                 f["bobine"] = choix["bobine"]
             else:
                 f.pop("bobine", None)
+            change = True
+    if change:
+        poser_prix(entree, bobines)
+    return appliquer_changements(entree, bobines) or change
+
+
+def dernier_occupant(entree, bac):
+    """La bobine qui alimente cet emplacement pour cette impression, d'après ce qui en a été noté."""
+    for c in reversed(entree.get("changements") or []):
+        if c.get("par") == bac:
+            return {"bobine": c.get("bobine"), "cle": c.get("cle")}
+    return ((entree.get("suivi") or {}).get("premiers") or {}).get(bac)
+
+
+def noter_coupure(entree, bac, percent):
+    """Un emplacement qui alimentait l'impression vient de se vider : on retient à quel avancement."""
+    suivi = entree.setdefault("suivi", {"premiers": {}, "coupures": {}})
+    if bac not in suivi["premiers"] and not any(c.get("par") == bac for c in entree.get("changements") or []):
+        return False
+    suivi["coupures"][bac] = percent
+    return True
+
+
+def noter_occupant(entree, bac, occupant, percent, bobines):
+    """Note la bobine qui alimente l'impression depuis cet emplacement, et celle qui prend le relais quand
+    elle change en cours de route : bobine neuve à la place d'une bobine terminée, autre bobine posée là,
+    ou, pour un fil unique, l'AMS qui passe sur un autre emplacement. Rend True si quelque chose est noté."""
+    suivi = entree.setdefault("suivi", {"premiers": {}, "coupures": {}})
+    premiers, coupures = suivi["premiers"], suivi["coupures"]
+    changements = entree.setdefault("changements", [])
+    nouvelle = (occupant or {}).get("bobine")
+    if bac not in premiers:
+        seul = len(entree["fils"]) == 1 and not entree.get("a_completer")
+        if seul and premiers:
+            source = entree["fils"][0].get("bac") or next(iter(premiers))
+            changements.append({"bac": source, "par": bac, "a": round(percent / 100, 4), "bobine": nouvelle,
+                                "cle": (occupant or {}).get("cle")})
+        premiers[bac] = occupant
+    else:
+        avant = dernier_occupant(entree, bac)
+        if nouvelle == (avant or {}).get("bobine"):
+            return False
+        if not avant and bac not in coupures:  # le fil de cet emplacement vient seulement d'être reconnu
+            premiers[bac] = occupant
+        elif nouvelle or bac in coupures:
+            source = next((c["bac"] for c in changements if c.get("par") == bac), bac)
+            changements.append({"bac": source, "par": bac, "a": round(coupures.pop(bac, percent) / 100, 4),
+                                "bobine": nouvelle, "cle": (occupant or {}).get("cle")})
+        else:
+            return False
+    if not changements:
+        del entree["changements"]
+    appliquer_changements(entree, bobines)
+    return True
+
+
+def appliquer_changements(entree, bobines):
+    """Reporte sur chaque fil les bobines qui ont pris le relais sur son emplacement en cours d'impression."""
+    change = False
+    for f in entree["fils"]:
+        if f.get("relais_choisis"):  # la personne l'a dit elle-même : on n'y revient pas
+            continue
+        relais = [{"a": c["a"], "bobine": c.get("bobine")} for c in entree.get("changements") or []
+                  if f.get("bac") and c["bac"] == f["bac"] and c["a"] > 0]
+        if relais != [{"a": r["a"], "bobine": r.get("bobine")} for r in f.get("relais") or []]:
+            if relais:
+                f["relais"] = relais
+            else:
+                f.pop("relais", None)
             change = True
     if change:
         poser_prix(entree, bobines)
@@ -1069,7 +1161,10 @@ def etat_page(donnees, parc=None, local=True, port=PORT, nouveautes=None):
                          "a_completer": bool(en.get("a_completer")),
                          "fils": [{"couleur": f["couleur"], "nom": nom_couleur(f["couleur"]), "type": f["type"],
                                    "g": round(f["g"] * part(en), 2), "pese": f["g"],
-                                   "bobine": f["bobine"] if f.get("bobine") in bobines else ""}
+                                   "bobine": f["bobine"] if f.get("bobine") in bobines else "",
+                                   "relais": [{"a": round(r["a"] * 100, 1),
+                                               "bobine": r["bobine"] if r.get("bobine") in bobines else ""}
+                                              for r in f.get("relais") or []]}
                                   for f in en["fils"]]}
                         for en in reversed(journal[-300:])],
         "alertes": list(reversed(lire_alertes(donnees))),
@@ -1147,6 +1242,21 @@ def fils_saisis(texte, bobines):
             if not choisie:
                 return None
             fil = {"couleur": choisie[0], "type": choisie[1]}
+        # Bobine changée en cours d'impression : à partir de tel avancement, telle bobine (ou aucune suivie).
+        relais = ligne.get("relais") or []
+        if not isinstance(relais, list) or len(relais) > 5:
+            return None
+        for r in relais:
+            try:
+                a = round(float(str(r.get("a")).replace(",", ".")), 1)
+            except (AttributeError, ValueError):
+                return None
+            suite = str(r.get("bobine") or "")
+            if not 0 < a < 100 or (suite and suite not in bobines):
+                return None
+            fil.setdefault("relais", []).append({"a": round(a / 100, 4), "bobine": suite or None})
+        if fil.get("relais"):
+            fil["relais"].sort(key=lambda r: r["a"])
         fils.append(dict(fil, g=grammes))
     return fils
 
@@ -1351,21 +1461,29 @@ def lancer_serveur(donnees, port, parc=None, reseau=False, nouveautes=None):
                 peses = [fil for fil in fils if fil["g"] > 0]
                 if not peses:
                     return entree.get("source") == "imprimante" and bool(entree.get("a_completer"))
-                entree["fils"] = [dict(fil, nom="", m=metres(fil["g"], fil["type"]), bobine_choisie=True) for fil in peses]
+                entree["fils"] = [dict(fil, nom="", m=metres(fil["g"], fil["type"]), bobine_choisie=True,
+                                       relais_choisis=True) for fil in peses]
                 entree.pop("a_completer", None)
                 return True
             if len(fils) != len(entree["fils"]):
                 return False
             for ancien, saisi in zip(entree["fils"], fils):
-                if saisi.get("bobine") == (ancien.get("bobine") if ancien.get("bobine") in bobines else None):
-                    continue  # rien de changé ; une bobine remplacée depuis reste notée sur le fil, avec son prix
-                if saisi.get("bobine"):
-                    if cle_fil(saisi) != cle_fil(ancien):
-                        ancien.setdefault("projet", {"couleur": ancien["couleur"], "type": ancien["type"]})
-                    ancien.update(couleur=saisi["couleur"], type=saisi["type"], bobine=saisi["bobine"])
-                else:
-                    ancien.pop("bobine", None)
-                ancien["bobine_choisie"] = True
+                # Une bobine remplacée depuis reste notée sur le fil, avec son prix, tant qu'on n'y touche pas.
+                if saisi.get("bobine") != (ancien.get("bobine") if ancien.get("bobine") in bobines else None):
+                    if saisi.get("bobine"):
+                        if cle_fil(saisi) != cle_fil(ancien):
+                            ancien.setdefault("projet", {"couleur": ancien["couleur"], "type": ancien["type"]})
+                        ancien.update(couleur=saisi["couleur"], type=saisi["type"], bobine=saisi["bobine"])
+                    else:
+                        ancien.pop("bobine", None)
+                    ancien["bobine_choisie"] = True
+                avant = [(r["a"], r.get("bobine") if r.get("bobine") in bobines else None) for r in ancien.get("relais") or []]
+                if [(r["a"], r["bobine"]) for r in saisi.get("relais", [])] != avant:
+                    if saisi.get("relais"):
+                        ancien["relais"] = saisi["relais"]
+                    else:
+                        ancien.pop("relais", None)
+                    ancien["relais_choisis"] = True
             return True
 
         def ajouter_impression(self, champs):
@@ -1386,7 +1504,8 @@ def lancer_serveur(donnees, port, parc=None, reseau=False, nouveautes=None):
                 entree = {"cle": "main|" + secrets.token_hex(8), "date": date.isoformat(timespec="seconds"),
                           "projet": projet, "fichier": "", "etat": "terminee", "source": "main",
                           "secondes": (minutes or 0) * 60,
-                          "fils": [dict(fil, nom="", m=metres(fil["g"], fil["type"]), bobine_choisie=True) for fil in fils]}
+                          "fils": [dict(fil, nom="", m=metres(fil["g"], fil["type"]), bobine_choisie=True,
+                                        relais_choisis=True) for fil in fils]}
                 seules = [r for r, _ in suivies(memoire)] if parc else []
                 if machine:
                     entree["imprimante"], entree["imprimante_choisie"] = machine, True
@@ -1800,6 +1919,7 @@ class Parc:
         self.stabilisation, self.remplacement = delais
         self.attente_studio = min(ATTENTE_STUDIO, 6 * self.stabilisation)
         self.port_carte = 990  # la carte mémoire des imprimantes se lit par là
+        self.cache_bobines = (None, {})
         self.imprimantes = {}  # repère → Imprimante écoutée
         self.connues = {}      # repère → numéro de série, pour celles que Bambu Studio connaît
         self.memoire = imprimantes_gardees(donnees)
@@ -1850,6 +1970,16 @@ class Parc:
     def nom(self, repere):
         with self.ecriture:
             return nom_imprimante(self.memoire, repere)
+
+    def bobines(self):
+        """Les bobines suivies, relues seulement quand leur fichier a changé : on les consulte à chaque annonce."""
+        try:
+            repere = os.stat(os.path.join(self.donnees, "bobines.json")).st_mtime_ns
+        except OSError:
+            repere = None
+        if repere != self.cache_bobines[0] or repere is None:
+            self.cache_bobines = (repere, lire_bobines(self.donnees))
+        return self.cache_bobines[1]
 
     def places(self):
         """Les emplacements de toutes les imprimantes suivies, tels qu'elles les annoncent en ce moment."""
@@ -1967,6 +2097,7 @@ class Imprimante(threading.Thread):
         self.tache = None    # l'impression en cours : {ident, percent, bacs, liee, debut, direct, etat, actif, vu}
         self.bac_actif = None
         self.dernier = 0.0   # heure du dernier départ ou de la dernière fin d'impression vus sur cette imprimante
+        self.coupures = []   # emplacements vidés pendant l'impression, notés hors du verrou des emplacements
         self.arret = threading.Event()  # levé quand l'imprimante n'est plus à suivre
 
     def noter(self, etat, detail=""):
@@ -2068,6 +2199,10 @@ class Imprimante(threading.Thread):
                 self.lire_ams(p["ams"])
             if json.dumps(self.emplacements, sort_keys=True) != memoire:
                 self.parc.garder()
+        coupures, self.coupures = self.coupures, []
+        t = self.tache
+        for bac, percent in coupures if t else []:
+            self.reporter(t["ident"], lambda entree, bobines, bac=bac, percent=percent: noter_coupure(entree, bac, percent))
         try:
             self.noter_bac()
             self.suivre_impression(p)
@@ -2116,6 +2251,8 @@ class Imprimante(threading.Thread):
             ancien = avant.get(cle)
             if cle != EXTERNE and ancien is not None and e.get("present") is not None and e["present"] != ancien:
                 self.attente.setdefault(cle, {"depart": ancien})["dernier"] = time.time()
+                if not e["present"] and self.tache and cle in self.tache["bacs"]:  # bobine finie ou retirée en pleine impression
+                    self.coupures.append((cle, self.tache["percent"]))
                 print("emplacement", nom_emplacement(cle), ":", "chargé" if e["present"] else "retiré", flush=True)
         if "tray_now" in ams:  # l'emplacement qui alimente la buse : 255 = aucun, 254 = bobine externe
             try:
@@ -2144,7 +2281,8 @@ class Imprimante(threading.Thread):
             if not self.tache or self.tache["ident"] != ident:
                 # `direct` : on a vu l'impression démarrer, et non découvert une impression déjà lancée
                 self.tache = {"ident": ident, "percent": percent, "bacs": [], "liee": False, "debut": maintenant,
-                              "direct": not premier, "etat": etat, "actif": 0.0, "vu": maintenant, "apres": self.dernier}
+                              "direct": not premier, "etat": etat, "actif": 0.0, "vu": maintenant, "apres": self.dernier,
+                              "vus": {}}
                 self.dernier = maintenant
                 self.lier()
             t = self.tache
@@ -2163,25 +2301,39 @@ class Imprimante(threading.Thread):
         else:
             self.tache = None
 
-    def fils_utilises(self, bacs, bobines):
-        """Ce qu'il y avait dans les emplacements vus en service : la bobine posée là sur la page, sinon le fil annoncé."""
+    def fils_utilises(self, bacs, bobines, premiers=None):
+        """Ce qui alimentait les emplacements vus en service : la bobine notée à leur première utilisation,
+        sinon celle posée là sur la page, sinon le fil annoncé."""
         occupe = occupation(self.parc.places(), bobines, annonces_sures=False)
         fils = []
         for bac in bacs:
-            o = occupe.get("%s:%s" % (self.repere, bac))
+            o = (premiers or {}).get(bac) or occupe.get("%s:%s" % (self.repere, bac))
             if o:
                 couleur, _, type_fil = o["cle"].partition("|")
-                fils.append({"couleur": couleur, "type": type_fil, "bobine": o["bobine"], "bac": bac})
+                fils.append({"couleur": couleur, "type": type_fil, "bobine": o.get("bobine"), "bac": bac})
         return fils
 
     def noter_bac(self):
-        """Retient l'emplacement qui alimente l'impression en cours ; un seul fil : on sait déjà d'où il vient."""
+        """Note l'emplacement qui alimente l'impression en cours et la bobine qui s'y trouve. Si elle change
+        en cours de route, la suite de l'impression revient à celle qui prend le relais."""
         t = self.tache
-        if not t or self.vue.get("gcode_state") != "RUNNING" or not self.bac_actif or self.bac_actif in t["bacs"]:
+        if not t or self.vue.get("gcode_state") != "RUNNING" or not self.bac_actif:
             return
-        t["bacs"].append(self.bac_actif)
-        self.reporter(t["ident"], lambda entree, bobines: attribuer_bacs(entree, self.fils_utilises(t["bacs"], bobines),
-                                                                       bobines, False))
+        bac, bobines = self.bac_actif, self.parc.bobines()
+        o = occupation(self.parc.places(), bobines, annonces_sures=False).get("%s:%s" % (self.repere, bac))
+        occupant = {"bobine": o["bobine"], "cle": o["cle"]} if o else None
+        if bac in t["bacs"] and t["vus"].get(bac, "?") == occupant:
+            return
+        if bac not in t["bacs"]:
+            t["bacs"].append(bac)
+        t["vus"][bac] = occupant
+        percent = t["percent"]
+
+        def changement(entree, bobines):
+            note = noter_occupant(entree, bac, occupant, percent, bobines)
+            premiers = (entree.get("suivi") or {}).get("premiers")
+            return attribuer_bacs(entree, self.fils_utilises(t["bacs"], bobines, premiers), bobines, False) or note
+        self.reporter(t["ident"], changement)
 
     def reporter(self, ident, changement):
         """Applique un changement à l'impression en cours du journal liée à cette tâche, s'il y en a une."""
@@ -2199,7 +2351,7 @@ class Imprimante(threading.Thread):
         with verrou:
             journal = lire_journal(self.parc.donnees)
             if any(e.get("tache") == t["ident"] and e.get("etat", "lancee") == "lancee" for e in journal):
-                t["liee"] = True
+                t["liee"], t["vus"] = True, {}
                 return
             maintenant = datetime.now()
             limite = (maintenant - timedelta(hours=48)).isoformat(timespec="seconds")
@@ -2213,6 +2365,7 @@ class Imprimante(threading.Thread):
                 recent = max(maintenant - timedelta(minutes=10), datetime.fromtimestamp(t["apres"])).isoformat(timespec="seconds")
                 choisies = [e for e in libres if e["date"] >= recent]
             if choisies:
+                t["vus"] = {}  # ce qui alimente l'impression sera noté sur elle à la prochaine annonce
                 choisies[-1]["tache"] = t["ident"]
                 if not choisies[-1].get("imprimante_choisie"):
                     choisies[-1]["imprimante"] = self.repere
@@ -2244,7 +2397,8 @@ class Imprimante(threading.Thread):
             journal = lire_journal(self.parc.donnees)
             if not any(e.get("tache") == t["ident"] and e.get("etat", "lancee") == "lancee" for e in journal):
                 bobines = lire_bobines(self.parc.donnees)
-                attribuer_bacs(entree, self.fils_utilises(t["bacs"], bobines), bobines, False)
+                entree["suivi"] = {"premiers": {bac: t["vus"].get(bac) for bac in t["bacs"]}, "coupures": {}}
+                attribuer_bacs(entree, self.fils_utilises(t["bacs"], bobines, entree["suivi"]["premiers"]), bobines, False)
                 journal.append(entree)
                 journal.sort(key=lambda e: e["date"])
                 ecrire_json(self.parc.donnees, "impressions.json", journal)
@@ -2261,7 +2415,8 @@ class Imprimante(threading.Thread):
                 entree["part"] = round(percent / 100, 2)
             if actif:
                 entree["duree"] = round(actif)
-            attribuer_bacs(entree, self.fils_utilises(bacs, bobines), bobines, True)
+            premiers = (entree.get("suivi") or {}).get("premiers")
+            attribuer_bacs(entree, self.fils_utilises(bacs, bobines, premiers), bobines, True)
             print("impression", "terminée :" if etat == "FINISH" else "arrêtée à %d %% :" % percent, entree["projet"], flush=True)
             finie.append(dict(entree))
             return True
@@ -2346,6 +2501,7 @@ class Imprimante(threading.Thread):
                     choix = bobine_probable(cle_fil(f), bobines, occupe)
                     if choix:
                         f["bobine"] = choix
+            appliquer_changements(entree, bobines)
             poser_prix(entree, bobines)
             ecrire_json(self.parc.donnees, "impressions.json", journal)
         print("fil lu sur la carte de l'imprimante :", entree["projet"], flush=True)

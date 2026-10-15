@@ -542,6 +542,59 @@ def essais_a_part():
         poster("/reglages", {"carte": "0"})
         retirer(ORANGE)
 
+        print("Bobine changée en cours d'impression")
+        a1, a2 = etat(port)["emplacements"][0]["id"], etat(port)["emplacements"][1]["id"]
+        poster("/bobine", {"couleur": BLANC, "type": "PLA", "poids": "1000", "prix": "20", "emplacement": a2})
+        ancienne = bobine(BLANC)["id"]
+        time.sleep(1.1)
+        envoi(racine, "12_40_00#1#11", 11, [(BLANC, "PLA", 100.0)], origine="Relais.3mf")
+        verifier("impression comptée sur la bobine de l'emplacement", attendre(lambda: impression("Relais")))
+        dicter({"gcode_state": "PREPARE", "subtask_name": "Relais_plate_1", "subtask_id": "4600", "mc_percent": 0})
+        dicter({"gcode_state": "RUNNING", "mc_percent": 10, "ams": {"tray_now": "1"}})
+        dicter({"mc_percent": 40})
+        time.sleep(1.5)
+        dicter({"gcode_state": "PAUSE", "ams": {"tray_exist_bits": "d"}})  # la bobine de A2 est finie à 40 %
+        verifier("l'avancement où la bobine s'est vidée est noté sur l'impression",
+                 attendre(lambda: next(e for e in journal(donnees) if e["projet"] == "Relais").get("suivi", {}).get("coupures") == {"0-1": 40}),
+                 str(next((e for e in journal(donnees) if e["projet"] == "Relais"), None)))
+        poster("/bobine", {"couleur": BLANC, "type": "PLA", "poids": "1000", "prix": "30", "emplacement": a2, "remplace": ancienne})
+        neuve = bobine(BLANC)["id"]
+        dicter({"ams": {"tray_exist_bits": "f"}})
+        dicter({"gcode_state": "RUNNING", "mc_percent": 45})
+        dicter({"mc_percent": 90})
+        dicter({"gcode_state": "FINISH", "mc_percent": 100})
+        relais = attendre(lambda: impression("Relais")["en_cours"] is None and impression("Relais")["fils"][0]["relais"] and impression("Relais")) or {}
+        verifier("la bobine neuve prend le relais à 40 %", relais.get("fils", [{}])[0].get("relais") == [{"a": 40.0, "bobine": neuve}], str(relais))
+        verifier("seule la suite de l'impression se déduit de la bobine neuve", bobine(BLANC)["reste"] == 940, str(bobine(BLANC)))
+        verifier("le coût suit le prix de chaque bobine", relais.get("cout") == 2.6, str(relais.get("cout")))
+
+        poster("/bobine", {"couleur": ORANGE, "type": "PLA", "poids": "500"})
+        time.sleep(1.1)
+        poster("/bobine", {"couleur": ORANGE, "type": "PLA", "poids": "800", "marque": "Relais", "emplacement": a1})
+        envoi(racine, "12_50_00#1#12", 12, [(ORANGE, "PLA", 50.0)], origine="Recharge.3mf")
+        verifier("impression à un fil comptée", attendre(lambda: impression("Recharge")))
+        dicter({"gcode_state": "PREPARE", "subtask_name": "Recharge_plate_1", "subtask_id": "4601", "mc_percent": 0})
+        dicter({"gcode_state": "RUNNING", "mc_percent": 10, "ams": {"tray_now": "3"}})
+        dicter({"mc_percent": 70})
+        time.sleep(1.5)
+        dicter({"mc_percent": 71, "ams": {"tray_now": "0"}})  # l'AMS passe sur une autre bobine du même fil
+        dicter({"gcode_state": "FINISH", "mc_percent": 100})
+        recharge = attendre(lambda: impression("Recharge")["en_cours"] is None and impression("Recharge")["fils"][0]["relais"] and impression("Recharge")) or {}
+        premiere, seconde = bobine(ORANGE, ""), bobine(ORANGE, "Relais")
+        verifier("le relais pris par l'AMS est noté", recharge.get("fils", [{}])[0].get("relais") == [{"a": 70.0, "bobine": seconde["id"]}],
+                 str(recharge))
+        verifier("chaque bobine perd sa part", premiere["reste"] == 465 and seconde["reste"] == 785, str((premiere, seconde)))
+        verifier("le relais se corrige à la main", poster("/impression", {"id": recharge["id"], "part": "100", "fils": json.dumps(
+            [{"bobine": premiere["id"], "g": 50, "relais": [{"a": 50, "bobine": seconde["id"]}]}])}) == 200
+            and bobine(ORANGE, "")["reste"] == 475 and bobine(ORANGE, "Relais")["reste"] == 775, str(etat(port)["bobines"]))
+        verifier("relais hors bornes refusé", poster("/impression", {"id": recharge["id"], "part": "100", "fils": json.dumps(
+            [{"bobine": premiere["id"], "g": 50, "relais": [{"a": 150, "bobine": ""}]}])}) == 400)
+        verifier("relais retiré à la main", poster("/impression", {"id": recharge["id"], "part": "100", "fils": json.dumps(
+            [{"bobine": premiere["id"], "g": 50, "relais": []}])}) == 200 and bobine(ORANGE, "")["reste"] == 450
+            and bobine(ORANGE, "Relais")["reste"] == 800, str(etat(port)["bobines"]))
+        retirer(ORANGE)
+        retirer(BLANC)
+
         print("Imprimante : bobine Bambu Lab à puce")
         dicter({"ams": bacs(BLEU, BLANC, NOIR, ORANGE, bac0={"tag_uid": "A1B2C3D400000100", "tray_weight": "1000",
                                                              "remain": 37, "tray_info_idx": "GFA00"})})

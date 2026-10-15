@@ -1,2 +1,2 @@
-1
-Suivi par imprimante, plusieurs bobines de la même couleur, impressions lancées du téléphone, réglages
+2
+Bobine changée en cours d'impression : le fil se partage entre les deux bobines

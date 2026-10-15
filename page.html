@@ -227,6 +227,11 @@ select.saisie{ font-size:13px; padding:10px 10px; }
 .fil-ligne .unite{ color:var(--muted2); font-size:13px; }
 .fil-ligne .pese{ font-size:13px; color:var(--text); white-space:nowrap; font-variant-numeric:tabular-nums; min-width:70px; text-align:right; }
 .fil-ligne .f-fermer{ margin-left:0; }
+.fil-ligne.relais{ padding-left:16px; }
+.fil-ligne.relais input{ width:68px; }
+.lien-bouton{ background:none; border:none; color:var(--muted2); font-size:12px; cursor:pointer; padding:0;
+  margin:-2px 0 12px; text-decoration:underline; text-underline-offset:3px; }
+.lien-bouton:hover{ color:#fff; }
 .f-pied{ display:flex; align-items:center; gap:10px; padding:18px 22px 20px; }
 .f-pied .espace{ flex:1; }
 .f-erreur{ color:var(--pink); font-size:12px; padding:0 22px; min-height:16px; line-height:1.5; }
@@ -647,6 +652,9 @@ function rendre() {
     if (i.en_cours != null) notes.push('<span class="mot">en cours, ' + i.en_cours + " %</span>");
     else if (i.part < 1) notes.push('<span class="mot">arrêtée à ' + Math.round(i.part * 100) + " %</span>");
     if (i.a_completer) notes.push('<span class="mot">fil à indiquer</span>');
+    var relais = [];
+    i.fils.forEach(function (f) { f.relais.forEach(function (r) { relais.push(nombre(r.a, 0) + " %"); }); });
+    if (relais.length) notes.push("bobine changée à " + relais.join(", "));
     if (i.cout != null) notes.push(euros(i.cout));
     h += '<div class="ligne impression"><div class="l-nom"><b>' + e(i.projet) + "</b><span>" + notes.join(" · ") + "</span></div>" +
       '<div class="fils">' + i.fils.map(function (f) { return '<span class="fil">' + pastille(f.couleur) + (f.pese ? poids(f.g) : "—") + "</span>"; }).join("") + "</div>" +
@@ -797,9 +805,12 @@ $("formulaire").addEventListener("submit", function (ev) {
 function ouvrirImpression(id) {
   var i = null;
   if (id) { etat.impressions.forEach(function (x) { if (x.id === id) i = x; }); if (!i) return; }
-  var fils = i ? i.fils.map(function (f) { return { choix: f.bobine ? "b:" + f.bobine : "c:" + f.couleur + "|" + f.type, nom: f.nom, g: f.pese || "" }; }) : [];
+  var fils = i ? i.fils.map(function (f) {
+    return { choix: f.bobine ? "b:" + f.bobine : "c:" + f.couleur + "|" + f.type, nom: f.nom, g: f.pese || "",
+             relais: f.relais.map(function (r) { return { a: r.a, choix: r.bobine }; }) };
+  }) : [];
   impression = { id: id || "", libre: !i || i.source !== "studio", machine: i ? i.imprimante : (etat.imprimantes.length === 1 ? etat.imprimantes[0].id : ""), fils: fils };
-  if (impression.libre && !fils.length) fils.push({ choix: premierChoix(), g: "" });
+  if (impression.libre && !fils.length) fils.push({ choix: premierChoix(), g: "", relais: [] });
   $("iTitre").textContent = i ? i.projet : "Ajouter une impression";
   $("cNom").hidden = $("cQuand").hidden = !!i;
   $("cPart").hidden = $("iSupprimer").hidden = !i;
@@ -839,6 +850,13 @@ function optionsFil(fil) {
   return h;
 }
 
+// Une bobine changée en cours d'impression : celle qui prend le relais, ou aucune bobine suivie.
+function optionsRelais(choix) {
+  return '<option value=""' + (choix ? "" : " selected") + ">Sans bobine suivie</option>" + etat.bobines.filter(function (b) { return b.id; }).map(function (b) {
+    return '<option value="' + e(b.id) + '"' + (b.id === choix ? " selected" : "") + ">" + e([b.nom, b.marque, b.type].filter(Boolean).join(" · ") +
+      (b.emplacements.length ? " — " + b.emplacements.join(" ") : "")) + "</option>"; }).join("");
+}
+
 function dessinerImpression() {
   var h = "";
   impression.fils.forEach(function (f, rang) {
@@ -847,6 +865,13 @@ function dessinerImpression() {
         ? '<input class="saisie" type="number" min="0" max="20000" step="0.01" placeholder="0" value="' + e(f.g) + '" data-rang="' + rang + '" aria-label="Grammes"><span class="unite">g</span>' +
           (impression.fils.length > 1 ? '<button type="button" class="f-fermer" data-oter="' + rang + '" aria-label="Retirer ce fil">×</button>' : "")
         : '<span class="pese">' + poids(Number(f.g) || 0) + "</span>") + "</div>";
+    f.relais.forEach(function (r, k) {
+      h += '<div class="fil-ligne relais"><span class="unite">puis dès</span>' +
+        '<input class="saisie" type="number" min="1" max="99" step="1" value="' + e(r.a) + '" data-rang="' + rang + '" data-relais="' + k + '" data-champ="a" aria-label="Avancement de l\'impression">' +
+        '<span class="unite">%</span><select class="saisie" data-rang="' + rang + '" data-relais="' + k + '" data-champ="choix" aria-label="Bobine qui prend le relais">' + optionsRelais(r.choix) + "</select>" +
+        '<button type="button" class="f-fermer" data-oter-relais="' + rang + ":" + k + '" aria-label="Retirer ce changement de bobine">×</button></div>';
+    });
+    if (f.relais.length < 5) h += '<button type="button" class="lien-bouton" data-relais-plus="' + rang + '">+ Bobine changée en cours d\'impression</button>';
   });
   $("iFils").innerHTML = h;
   var machines = etat.machines;
@@ -861,11 +886,22 @@ $("ficheImpression").addEventListener("click", function (ev) {
   if (c.dataset.valeur) { $("iPart").value = c.dataset.valeur; presets("iPresets", PARTS, Number(c.dataset.valeur), function (v) { return v + " %"; }); }
   else if (c.dataset.machine) { impression.machine = c.dataset.machine; dessinerImpression(); }
   else if (c.dataset.oter) { impression.fils.splice(Number(c.dataset.oter), 1); dessinerImpression(); }
-  else if (c.id === "iPlus") { impression.fils.push({ choix: premierChoix(), g: "" }); dessinerImpression(); }
+  else if (c.dataset.relaisPlus) {
+    var fil = impression.fils[Number(c.dataset.relaisPlus)], dernier = fil.relais[fil.relais.length - 1];
+    fil.relais.push({ a: dernier ? Math.min(Number(dernier.a) + 10, 99) : 50, choix: "" });
+    dessinerImpression();
+  }
+  else if (c.dataset.oterRelais) {
+    var rangs = c.dataset.oterRelais.split(":");
+    impression.fils[Number(rangs[0])].relais.splice(Number(rangs[1]), 1);
+    dessinerImpression();
+  }
+  else if (c.id === "iPlus") { impression.fils.push({ choix: premierChoix(), g: "", relais: [] }); dessinerImpression(); }
 });
 $("ficheImpression").addEventListener("input", function (ev) {
   var c = ev.target;
   if (c.id === "iPart") presets("iPresets", PARTS, Number(c.value), function (v) { return v + " %"; });
+  else if (c.dataset.relais !== undefined) impression.fils[Number(c.dataset.rang)].relais[Number(c.dataset.relais)][c.dataset.champ] = c.value;
   else if (c.dataset.rang !== undefined) impression.fils[Number(c.dataset.rang)][c.tagName === "SELECT" ? "choix" : "g"] = c.value;
 });
 $("iSupprimer").addEventListener("click", function () {
@@ -876,11 +912,18 @@ $("formulaireImpression").addEventListener("submit", function (ev) {
   ev.preventDefault();
   var p = Number($("iPart").value);
   if (!(p >= 0 && p <= 100) || $("iPart").value === "") { $("iErreur").textContent = "Indiquez une part entre 0 et 100 %."; return; }
+  var horsBornes = false;
   var fils = impression.fils.map(function (f) {
     var g = Number(String(f.g).replace(",", ".")) || 0;
-    if (f.choix.indexOf("b:") === 0) return { bobine: f.choix.slice(2), g: g };
-    return { couleur: f.choix.slice(2, 9), type: f.choix.split("|")[1], g: g };
+    var relais = f.relais.map(function (r) {
+      var a = Number(String(r.a).replace(",", "."));
+      if (!(a > 0 && a < 100)) horsBornes = true;
+      return { a: a, bobine: r.choix };
+    });
+    if (f.choix.indexOf("b:") === 0) return { bobine: f.choix.slice(2), g: g, relais: relais };
+    return { couleur: f.choix.slice(2, 9), type: f.choix.split("|")[1], g: g, relais: relais };
   });
+  if (horsBornes) { $("iErreur").textContent = "Un changement de bobine se situe entre 1 et 99 % de l'impression."; return; }
   var champs = { fils: JSON.stringify(fils), imprimante: impression.machine || "" }, chemin = "/impression";
   if (impression.id) { champs.id = impression.id; champs.part = String(p); }
   else {
