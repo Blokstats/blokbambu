@@ -6,7 +6,7 @@ Un compteur de fil pour les imprimantes Bambu Lab, sur Mac, Windows et Linux.
 - **Bobines** : la page montre ce qu'il reste sur chaque bobine, avec sa marque, son prix, son emplacement sur l'imprimante et vos bobines en réserve. Plusieurs bobines de la même couleur se suivent côte à côte.
 - **Imprimantes** : chacune porte le nom que vous lui donnez. La page montre ce qu'elle imprime, les bobines qu'elle porte, et ce qu'elle a consommé : fil, impressions, temps, coût.
 - **Coût et temps** : avec le prix de vos bobines, chaque impression et chaque mois sont chiffrés ; le temps d'impression est totalisé par mois et par imprimante.
-- **Alertes** : une fenêtre vous prévient quand une bobine est chargée, changée ou retirée, quand une impression demande plus de fil qu'il n'en reste, quand la dernière bobine d'une couleur arrive au bout, et quand une impression est terminée ou s'est arrêtée.
+- **Alertes** : une fenêtre vous prévient quand une bobine est chargée, changée ou retirée, quand une impression demande plus de fil qu'il n'en reste, quand la dernière bobine d'une couleur arrive au bout, quand une impression est terminée ou s'est arrêtée, et quand l'imprimante signale une erreur — dite en clair, avec les textes de Bambu Studio.
 - **Impressions lancées ailleurs** : celles du téléphone ou de l'écran de l'imprimante apparaissent aussi. Vous indiquez leur fil, ou BlokBambu le lit sur l'imprimante si vous l'y autorisez.
 
 Tout tourne sur votre ordinateur. Vos données n'en sortent pas, et BlokBambu n'envoie aucune commande à l'imprimante.
@@ -91,7 +91,8 @@ Avec plusieurs imprimantes, chaque impression porte le nom de la sienne et la li
 - **Modifier**, sur une impression : la part réellement imprimée, la bobine qui a fourni chaque fil (et celle qui a pris le relais en cours de route), l'imprimante, ou la supprimer.
 - **+ Ajouter une impression** : pour noter à la main une impression que BlokBambu n'a pas vue.
 - Une impression lancée **depuis le téléphone ou l'écran de l'imprimante** apparaît d'elle-même, avec son nom, son heure, son avancement et l'emplacement utilisé. Son poids n'est pas connu : cliquez **Compléter** pour l'indiquer.
-- Pour ne pas avoir à le saisir, activez dans les réglages « Poids des impressions lancées ailleurs : lu sur l'imprimante ». Une fois l'impression finie, BlokBambu lit alors son fichier sur la carte mémoire de l'imprimante. Il ne fait que lire.
+- Pour ne pas avoir à le saisir, activez dans les réglages « Lire la carte mémoire de l'imprimante ». Une fois l'impression finie, BlokBambu y lit alors son fichier. Il y lit aussi, pour toutes les impressions, de quel emplacement chaque fil est vraiment parti : sans cela, pour un projet à plusieurs couleurs, il retient l'emplacement utilisé de la couleur la plus proche. Il ne fait que lire.
+- **Reprendre l'historique de la carte**, dans les réglages : ajoute une fois les impressions passées dont l'imprimante garde le fichier (souvent plusieurs mois). Elles ne se déduisent pas des bobines d'aujourd'hui. Une impression relancée plusieurs fois n'y laisse qu'un fichier, et la carte ne dit pas si elle a été menée au bout.
 
 ### Depuis le téléphone
 
@@ -105,7 +106,7 @@ Dans les réglages, activez « Voir BlokBambu depuis le téléphone ». La page 
 ## À savoir
 
 - Les poids sont ceux que Bambu Studio estime au lancement de l'impression, purge comprise. Pour une impression arrêtée en route, BlokBambu retient l'avancement annoncé par l'imprimante : c'est une estimation, que vous pouvez corriger.
-- Le fil est rattaché à la bobine qui l'a vraiment fourni quand l'imprimante est connectée ; sinon, à la couleur réglée dans le projet. Avec plusieurs fils, c'est l'emplacement utilisé de la couleur la plus proche qui est retenu.
+- Le fil est rattaché à la bobine qui l'a vraiment fourni quand l'imprimante est connectée ; sinon, à la couleur réglée dans le projet. Avec plusieurs fils, c'est l'emplacement noté par l'imprimante si la lecture de la carte est activée, sinon l'emplacement utilisé de la couleur la plus proche.
 - Le temps d'impression est celui que Bambu Studio prévoit. Pour une impression lancée ailleurs, c'est le temps observé sur l'imprimante, pauses déduites.
 - Une impression lancée ailleurs n'est vue que si l'ordinateur est allumé pendant qu'elle tourne.
 - L'alerte de bobine et l'alerte de fin demandent que l'ordinateur soit allumé et sur le même réseau que l'imprimante.
@@ -147,7 +148,8 @@ BlokBambu est un petit programme en Python (`compteur.py`, sans dépendance) qui
 
 - **Les impressions.** Quand vous cliquez sur « Imprimer », Bambu Studio écrit sur l'ordinateur le fichier qu'il envoie à l'imprimante. BlokBambu le repère et y lit le poids de chaque fil.
 - **L'imprimante.** BlokBambu écoute ce qu'elle annonce sur le réseau local, comme le fait Bambu Studio : les bobines chargées, l'impression en cours, son avancement, sa fin. Pour s'y connecter, il lit le code d'accès que Bambu Studio garde déjà sur l'ordinateur, et vérifie que c'est bien une imprimante Bambu Lab, la vôtre, avant de le présenter. Il écoute seulement : il ne peut ni lancer ni arrêter une impression.
-- **La carte mémoire de l'imprimante**, seulement si vous l'activez dans les réglages : à la fin d'une impression lancée ailleurs, BlokBambu y lit le fichier de cette impression pour connaître son poids. Il n'écrit rien, n'efface rien.
+- **La carte mémoire de l'imprimante**, seulement si vous l'activez dans les réglages ou demandez la reprise de l'historique : BlokBambu y lit le fichier et la note que l'imprimante garde de chaque impression (poids, emplacement de chaque fil). Il n'écrit rien, n'efface rien.
+- **Les erreurs** : BlokBambu les traduit avec les textes que Bambu Studio garde sur l'ordinateur ; sans eux, la page montre le code.
 - **La page** n'est visible que depuis votre ordinateur (`127.0.0.1`), sauf si vous l'ouvrez au téléphone dans les réglages : elle demande alors un code aux autres appareils du réseau.
 
 Ce qui sort de l'ordinateur, et ce qui n'en sort pas :

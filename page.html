@@ -110,6 +110,8 @@ main{ position:relative; z-index:1; max-width:1100px; margin:0 auto; padding:32p
 .i-chiffres .n{ font-family:var(--titre); font-weight:900; font-size:14px; color:#fff; white-space:nowrap; }
 .i-chiffres .l{ font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-top:5px; }
 .i-total{ font-size:12px; color:var(--muted); margin-top:-4px; }
+.i-erreur{ font-size:12px; line-height:1.5; color:var(--pink); margin-top:-4px; }
+.i-erreur b{ font-weight:600; }
 
 /* Bobines */
 .bobines{ display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:14px; }
@@ -414,9 +416,11 @@ select.saisie{ font-size:13px; padding:10px 10px; }
     <div class="champ"><span class="etiquette">Fenêtre à la fin d'une impression</span>
       <div class="choix"><button type="button" class="puce" data-regle="fin" data-valeur="1">Activée</button><button type="button" class="puce" data-regle="fin" data-valeur="0">Désactivée</button></div>
       <div class="aide">Elle prévient quand une impression est terminée ou s'est arrêtée.</div></div>
-    <div class="champ" id="cCarte"><span class="etiquette">Poids des impressions lancées ailleurs</span>
-      <div class="choix"><button type="button" class="puce" data-regle="carte" data-valeur="1">Lu sur l'imprimante</button><button type="button" class="puce" data-regle="carte" data-valeur="0">Saisi à la main</button></div>
-      <div class="aide">Une impression lancée du téléphone ou de l'écran de l'imprimante arrive sans son poids. BlokBambu peut le lire dans le fichier d'impression, sur la carte mémoire de l'imprimante, une fois l'impression finie. Il ne fait que lire.</div></div>
+    <div class="champ" id="cCarte"><span class="etiquette">Lire la carte mémoire de l'imprimante</span>
+      <div class="choix"><button type="button" class="puce" data-regle="carte" data-valeur="1">Activé</button><button type="button" class="puce" data-regle="carte" data-valeur="0">Désactivé</button></div>
+      <div class="aide">Une fois une impression finie, BlokBambu y lit de quel emplacement chaque fil est vraiment parti, et le poids des impressions lancées du téléphone ou de l'écran. Il ne fait que lire.</div>
+      <div class="avec-unite" style="margin-top:12px"><button type="button" class="btn" id="rHistorique">Reprendre l'historique de la carte</button></div>
+      <div class="aide" id="rHistoriqueAide">Ajoute les impressions passées dont l'imprimante garde le fichier, une seule fois chacune. Quelques minutes, imprimante allumée et au repos. Une impression relancée plusieurs fois n'y laisse qu'un fichier, et la carte ne dit pas si elle a été menée au bout.</div></div>
     <div class="champ"><span class="etiquette">Voir BlokBambu depuis le téléphone</span>
       <div class="choix"><button type="button" class="puce" data-regle="reseau" data-valeur="1">Activé</button><button type="button" class="puce" data-regle="reseau" data-valeur="0">Désactivé</button></div>
       <div class="aide" id="rAide">Les appareils du même Wi-Fi pourront ouvrir cette page, après avoir saisi un code.</div></div>
@@ -552,6 +556,8 @@ function rendre() {
     }).join("");
     h += '<div class="imprimante"><div class="i-haut"><span class="i-nom">' + e(i.nom) + "</span>" +
       '<span class="i-etat' + (i.etat === "connectee" ? " on" : i.alerte ? " alerte" : "") + '" title="' + e(i.texte) + '"><span class="dot"></span>' + e(majuscule(i.court)) + "</span></div>" +
+      i.erreurs.map(function (x) {
+        return '<div class="i-erreur"><b>' + e(x.code) + "</b> · " + e(x.texte || "erreur signalée par l'imprimante") + "</div>"; }).join("") +
       (t ? '<div class="i-tache"><b>' + e(t.projet) + '</b><span class="mot">' + (t.pause ? "en pause à " : "en cours, ") + t.percent + " %</span>" +
            '<div class="jauge"><i style="width:' + t.percent + '%"></i></div></div>'
          : i.repos ? '<div class="i-tache"><span>Au repos</span></div>' : "") +
@@ -652,6 +658,7 @@ function rendre() {
     if (i.en_cours != null) notes.push('<span class="mot">en cours, ' + i.en_cours + " %</span>");
     else if (i.part < 1) notes.push('<span class="mot">arrêtée à ' + Math.round(i.part * 100) + " %</span>");
     if (i.a_completer) notes.push('<span class="mot">fil à indiquer</span>');
+    if (i.source === "carte") notes.push("repris de la carte");
     var relais = [];
     i.fils.forEach(function (f) { f.relais.forEach(function (r) { relais.push(nombre(r.a, 0) + " %"); }); });
     if (relais.length) notes.push("bobine changée à " + relais.join(", "));
@@ -970,6 +977,12 @@ function dessinerReglages() {
     ? "Ouvrez cette adresse sur un téléphone relié au même Wi-Fi, puis saisissez le code. Si l'ordinateur demande d'autoriser les connexions entrantes, acceptez."
     : "Les appareils du même Wi-Fi pourront ouvrir cette page, après avoir saisi un code.";
   $("rLien").textContent = etat.site;
+  var h = r.historique;
+  $("rHistorique").disabled = !!(h && h.etat === "en cours");
+  $("rHistoriqueAide").textContent = !h ? "Ajoute les impressions passées dont l'imprimante garde le fichier, une seule fois chacune. Quelques minutes, imprimante allumée et au repos. Une impression relancée plusieurs fois n'y laisse qu'un fichier, et la carte ne dit pas si elle a été menée au bout."
+    : (h.etat === "en cours" ? "Lecture de la carte : " + h.lus + " fichier" + (h.lus > 1 ? "s" : "") + " sur " + (h.total || "…")
+       : "Terminé : " + pluriel(h.ajoutees, "impression") + " ajoutée" + (h.ajoutees > 1 ? "s" : "") + (h.deja ? ", " + h.deja + " déjà comptée" + (h.deja > 1 ? "s" : "") : ""))
+      + (h.sautees.length ? ". " + h.sautees.join(" ; ") : "") + ".";
   $("rVersion").textContent = "BlokBambu version " + etat.version + (etat.maj ? " · la version " + etat.maj.version + " est parue" : " · à jour");
 }
 function regler(champs) {
@@ -1027,6 +1040,11 @@ $("rValiderAjout").addEventListener("click", function () {
     .then(function () { bouton.disabled = false; });
 });
 $("rPartager").addEventListener("click", function () { copier(etat.site, $("rPartager")); });
+$("rHistorique").addEventListener("click", function () {
+  $("rErreur").textContent = "";
+  envoyer("/imprimante/historique", {}).then(dessinerReglages)
+    .catch(function () { $("rErreur").textContent = "La reprise de l'historique n'a pas pu commencer."; });
+});
 $("reglages").addEventListener("click", ouvrirReglages);
 $("gerer").addEventListener("click", ouvrirReglages);
 

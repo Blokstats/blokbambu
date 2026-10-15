@@ -9,9 +9,11 @@ import os
 import socket
 import ssl
 import sys
+import time
 
 port, certificat, cle, code, dossier = int(sys.argv[1]), *sys.argv[2:6]
 ECRITURES = ("STOR", "STOU", "APPE", "DELE", "RNFR", "RNTO", "MKD", "RMD", "SITE")
+MOIS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 contexte = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 contexte.load_cert_chain(certificat, cle)
@@ -20,6 +22,21 @@ ecoute.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 ecoute.bind(("127.0.0.1", port))
 ecoute.listen(5)
 print("fausse carte sur", port, flush=True)
+
+
+def liste(chemin):
+    """Le dossier demandé, comme l'imprimante le liste : droits, taille, date à la minute, nom."""
+    local = os.path.realpath(os.path.join(dossier, chemin.lstrip("/")))
+    if not (local == os.path.realpath(dossier) or local.startswith(os.path.realpath(dossier) + os.sep)) or not os.path.isdir(local):
+        return None
+    lignes = []
+    for nom in sorted(os.listdir(local)):
+        etat = os.stat(os.path.join(local, nom))
+        t = time.localtime(etat.st_mtime)
+        lignes.append("%s   1 root  root %9d %s %02d %02d:%02d %s" % (
+            "-rw-rw-rw-" if os.path.isfile(os.path.join(local, nom)) else "drw-rw-rw-", etat.st_size,
+            MOIS[t.tm_mon - 1], t.tm_mday, t.tm_hour, t.tm_min, nom))
+    return ("\r\n".join(lignes) + "\r\n").encode("utf-8")
 
 
 def fichier(chemin):
@@ -70,17 +87,20 @@ while True:
                 passif.settimeout(20)
                 p = passif.getsockname()[1]
                 dire("227 Entering Passive Mode (127,0,0,1,%d,%d)" % (p // 256, p % 256))
-            elif commande == "RETR":
-                local = fichier(argument)
-                if not local or not passif:
+            elif commande in ("RETR", "LIST"):
+                if commande == "RETR":
+                    local = fichier(argument)
+                    contenu = open(local, "rb").read() if local else None
+                else:
+                    contenu = liste(argument or "/")
+                if contenu is None or not passif:
                     dire("550 ")
                     continue
-                print("RETR", argument, flush=True)
+                print(commande, argument, flush=True)
                 dire("150 ")
                 donnees = contexte.wrap_socket(passif.accept()[0], server_side=True)
                 donnees.settimeout(20)
-                with open(local, "rb") as f:
-                    donnees.sendall(f.read())
+                donnees.sendall(contenu)
                 try:
                     donnees.unwrap()
                     print("fin de transfert propre", flush=True)

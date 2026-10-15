@@ -156,6 +156,10 @@ class Banc:
              self.chemin(serie + ".key"), CODE, dossier], stdout=self.sortie("carte.log"), stderr=subprocess.STDOUT))
 
     def conf(self, series):
+        os.makedirs(self.chemin("hms"), exist_ok=True)
+        with open(self.chemin("hms", "hms_fr_ESS.json"), "w", encoding="utf-8") as f:
+            json.dump({"data": {"device_hms": {"fr": [{"ecode": "0300010000010007", "intro": "Essai : le plateau chauffe mal."}]},
+                                "device_error": {"fr": [{"ecode": "07008011", "intro": "Le filament AMS s'est épuisé."}]}}}, f)
         chemin = self.chemin("BambuStudio-%d.conf" % len(series))
         with open(chemin, "w", encoding="utf-8") as f:
             json.dump({"app": {"user_last_selected_machine": series[0]}, "access_code": {s: CODE for s in series}}, f)
@@ -534,6 +538,48 @@ def essais_a_part():
         verifier("le compteur n'a fait que lire la carte, et a fermé proprement",
                  "ECRITURE" not in journal_carte and "BRUTALE" not in journal_carte and journal_carte.count("fin de transfert propre") == 2,
                  journal_carte)
+
+        print("Emplacement exact de chaque fil, d'après la note de l'imprimante")
+        envoi(racine, "12_45_00#1#13", 13, [(NOIR, "PLA", 6.0), (BLANC, "PLA", 4.0)], origine="Note exacte.3mf")
+        verifier("impression à deux fils comptée", attendre(lambda: impression("Note exacte")))
+        with open(os.path.join(sur_carte, "cache", "1_Note exacte_plate_1.bbl"), "w", encoding="utf-8") as fichier:
+            json.dump({"ams mapping": [0, 3]}, fichier)  # le noir est parti de A1, le blanc de A4
+        dicter({"gcode_state": "PREPARE", "subtask_name": "Note exacte_plate_1", "subtask_id": "4450", "mc_percent": 0})
+        dicter({"gcode_state": "RUNNING", "mc_percent": 20, "ams": {"tray_now": "0"}})
+        dicter({"mc_percent": 60, "ams": {"tray_now": "3"}})
+        dicter({"gcode_state": "FINISH", "mc_percent": 100})
+        exacte = attendre(lambda: [(x["couleur"], x["g"]) for x in impression("Note exacte")["fils"]] == [(BLEU, 6.0), (ORANGE, 4.0)]
+                          and impression("Note exacte"))
+        verifier("chaque fil va à l'emplacement noté par l'imprimante, pas à la couleur la plus proche", bool(exacte),
+                 str(impression("Note exacte")))
+        verifier("et se déduit de la bobine qui s'y trouve", bobine(ORANGE)["reste"] == 974.5, str(bobine(ORANGE)))
+
+        print("Reprise de l'historique de la carte")
+        ancienne = os.path.join(sur_carte, "cache", "Ancienne_plate_1.3mf")
+        with zipfile.ZipFile(ancienne, "w") as z:
+            z.writestr("Metadata/plate_1.gcode", "; essai\n")
+            z.writestr("Metadata/slice_info.config", resume.replace(NOIR, BLEU).replace('used_g="21.5"', 'used_g="33"'))
+        with open(os.path.join(sur_carte, "cache", "1_Ancienne_plate_1.bbl"), "w", encoding="utf-8") as fichier:
+            json.dump({"ams mapping": [0, 1]}, fichier)
+        with open(os.path.join(sur_carte, "cache", "Ancienne_plate_1_plate_1.gcode"), "w") as fichier:
+            fichier.write("; g-code seul : laissé de côté\n")
+        il_y_a_deux_jours = time.time() - 2 * 86400
+        os.utime(ancienne, (il_y_a_deux_jours, il_y_a_deux_jours))
+        verifier("reprise lancée depuis les réglages", poster("/imprimante/historique", {}) == 200)
+        bilan = attendre(lambda: etat(port)["reglages"]["historique"]["etat"] == "fini" and etat(port)["reglages"]["historique"]) or {}
+        verifier("l'impression ancienne est ajoutée, celle déjà comptée reconnue",
+                 bilan.get("ajoutees") == 1 and bilan.get("deja") == 1 and bilan.get("total") == 2, str(bilan))
+        passee = impression("Ancienne") or {"fils": [], "date": "", "source": ""}
+        verifier("avec sa date et ses grammes, sans rien déduire des bobines d'aujourd'hui",
+                 passee["source"] == "carte" and passee["date"][:10] == time.strftime("%Y-%m-%d", time.localtime(il_y_a_deux_jours))
+                 and [(x["couleur"], x["g"]) for x in passee["fils"]] == [(BLEU, 33.0), (BLANC, 3.5)]
+                 and not any(x["bobine"] for x in passee["fils"]) and bobine(ORANGE)["reste"] == 974.5, str(passee))
+        poster("/imprimante/historique", {})
+        bilan = attendre(lambda: etat(port)["reglages"]["historique"]["etat"] == "fini" and etat(port)["reglages"]["historique"]) or {}
+        verifier("relancée, la reprise n'ajoute rien de plus", bilan.get("ajoutees") == 0
+                 and len([x for x in etat(port)["impressions"] if x["projet"] == "Ancienne"]) == 1, str(bilan))
+        journal_carte = banc.lu("carte.log")
+        verifier("toujours rien d'écrit sur la carte", "ECRITURE" not in journal_carte and "BRUTALE" not in journal_carte, journal_carte[-600:])
         dicter({"gcode_state": "RUNNING", "subtask_name": "Absente_plate_1", "subtask_id": "4401", "mc_percent": 5})
         verifier("autre impression lancée ailleurs", attendre(lambda: impression("Absente"), 40))
         dicter({"gcode_state": "FINISH", "mc_percent": 100})
@@ -594,6 +640,21 @@ def essais_a_part():
             and bobine(ORANGE, "Relais")["reste"] == 800, str(etat(port)["bobines"]))
         retirer(ORANGE)
         retirer(BLANC)
+
+        print("Erreurs signalées par l'imprimante")
+        dicter({"hms": [], "print_error": 0})
+        time.sleep(1)
+        dicter({"hms": [{"attr": 0x03000100, "code": 0x00010007}]})
+        verifier("une alerte de l'imprimante ouvre une fenêtre, en clair",
+                 attendre(lambda: "Essai : le plateau chauffe mal. (0300_0100_0001_0007)" in vues()), vues()[-400:])
+        verifier("et se voit sur la carte de l'imprimante", etat(port)["imprimantes"][0]["erreurs"]
+                 == [{"code": "0300_0100_0001_0007", "texte": "Essai : le plateau chauffe mal."}], str(etat(port)["imprimantes"][0]))
+        dicter({"gcode_state": "RUNNING", "subtask_name": "Erreur_plate_1", "subtask_id": "4700", "mc_percent": 5})
+        dicter({"gcode_state": "PAUSE", "print_error": 0x07008011})
+        verifier("ce qui met l'impression en pause est dit", attendre(lambda: "Le filament AMS s'est épuisé. (0700_8011)" in vues()), vues()[-400:])
+        dicter({"gcode_state": "FAILED", "print_error": 0x0300400C, "hms": []})
+        verifier("plus d'erreur active ensuite", attendre(lambda: etat(port)["imprimantes"][0]["erreurs"] == []))
+        verifier("une impression annulée n'ouvre pas de fenêtre d'erreur", "0300_400C" not in vues())
 
         print("Imprimante : bobine Bambu Lab à puce")
         dicter({"ams": bacs(BLEU, BLANC, NOIR, ORANGE, bac0={"tag_uid": "A1B2C3D400000100", "tray_weight": "1000",

@@ -66,17 +66,55 @@ def conf_bambu():
     return next((c for c in chemins if os.path.exists(c)), chemins[0])
 
 
+def ressources_bambu():
+    """Les dossiers de ressources de Bambu Studio installé, là où leur emplacement est connu."""
+    if MAC:
+        return ["/Applications/BambuStudio.app/Contents/Resources",
+                os.path.expanduser("~/Applications/BambuStudio.app/Contents/Resources")]
+    if WINDOWS:
+        return [os.path.join(os.environ[v], "Bambu Studio", "resources")
+                for v in ("ProgramFiles", "ProgramFiles(x86)") if os.environ.get(v)]
+    return []
+
+
 def certificats_installes():
     """Le certificat livré avec Bambu Studio, là où son emplacement est connu : il suit ses mises à jour."""
-    if MAC:
-        bases = ["/Applications/BambuStudio.app/Contents/Resources",
-                 os.path.expanduser("~/Applications/BambuStudio.app/Contents/Resources")]
-    elif WINDOWS:
-        bases = [os.path.join(os.environ[v], "Bambu Studio", "resources")
-                 for v in ("ProgramFiles", "ProgramFiles(x86)") if os.environ.get(v)]
-    else:
-        bases = []
-    return [c for c in (os.path.join(b, "cert", "printer.cer") for b in bases) if os.path.exists(c)]
+    return [c for c in (os.path.join(b, "cert", "printer.cer") for b in ressources_bambu()) if os.path.exists(c)]
+
+
+TEXTES_ERREURS = {}  # modèle d'imprimante → {code: texte}
+
+
+def textes_erreurs(serie, conf=None):
+    """{code: texte} des erreurs de ce modèle d'imprimante, tels que Bambu Studio les garde sur
+    l'ordinateur — en français s'il les a. Vide si rien n'est trouvé : la page montre alors le code."""
+    modele = (serie or "")[:3]
+    if modele in TEXTES_ERREURS:
+        return TEXTES_ERREURS[modele]
+    dossiers = ([os.path.join(os.path.dirname(conf), "hms")] if conf else []) + \
+        [os.path.join(d, "hms") for d in dossiers_bambu() + ressources_bambu()]
+    textes = {}
+    for langue in ("fr", "en", "*"):
+        for chemin in [c for d in dossiers for c in sorted(glob.glob(os.path.join(d, "hms_%s_%s.json" % (langue, modele))))]:
+            try:
+                with open(chemin, encoding="utf-8") as fichier:
+                    donnees = json.load(fichier).get("data") or {}
+            except (OSError, ValueError, AttributeError):
+                continue
+            for groupe in ("device_hms", "device_error"):
+                for liste in (donnees.get(groupe) or {}).values():
+                    for x in liste if isinstance(liste, list) else []:
+                        if isinstance(x, dict) and x.get("ecode") and x.get("intro"):
+                            textes.setdefault(str(x["ecode"]).upper(), " ".join(str(x["intro"]).split()))
+        if textes:
+            break
+    TEXTES_ERREURS[modele] = textes
+    return textes
+
+
+def code_lisible(code):
+    """« 0700_8011 », « 0300_0100_0001_0007 » : le code comme Bambu Studio l'écrit."""
+    return "_".join(code[i:i + 4] for i in range(0, len(code), 4))
 
 
 DONNEES = dossier_donnees()
@@ -1128,6 +1166,7 @@ def etat_page(donnees, parc=None, local=True, port=PORT, nouveautes=None):
         imprimantes.append({"id": repere, "nom": noms[repere], "etat": v["etat"], "court": ETATS_COURTS.get(v["etat"], ""),
                             "texte": ETATS_IMPRIMANTE.get(v["etat"], ""), "alerte": v["etat"] in ("bloquee", "refusee"),
                             "impression": tache, "repos": bool(v.get("entendue")) and v["etat"] == "connectee" and not tache,
+                            "erreurs": v.get("erreurs") or [],
                             "emplacements": charge, "total": chiffres(machine["total"]),
                             "mois": chiffres(machine["mois"])})
 
@@ -1181,7 +1220,8 @@ def etat_page(donnees, parc=None, local=True, port=PORT, nouveautes=None):
         etat["reglages"] = {"reseau": reglages["reseau"], "code": reglages["code"], "seuil": reglages["seuil"],
                             "fin": reglages["fin"], "carte": reglages["carte"],
                             "adresse": "http://%s:%d/" % (adresse, port) if adresse else None,
-                            "imprimantes": parc.reglages() if parc else None}
+                            "imprimantes": parc.reglages() if parc else None,
+                            "historique": dict(parc.historique) if parc and parc.historique else None}
     return etat
 
 
@@ -1549,6 +1589,8 @@ def lancer_serveur(donnees, port, parc=None, reseau=False, nouveautes=None):
                 return self.bon(parc.retirer(repere))
             if self.path == "/imprimante/suivre":
                 return self.bon(parc.reprendre(repere))
+            if self.path == "/imprimante/historique":
+                return self.bon(parc.reprendre_historique())
             if self.path != "/imprimante/ajouter":
                 return self.bon(False)
             adresse, code = adresse_saisie(champs.get("adresse", "")), champs.get("code", "").strip()
@@ -1831,7 +1873,28 @@ class Carte(ftplib.FTP_TLS):
 
     def lire(self, chemin):
         self.voidcmd("TYPE I")
-        conn, _ = self.ntransfercmd("RETR " + chemin)
+        return self.recevoir("RETR " + chemin)
+
+    def lister(self, dossier):
+        """Les fichiers d'un dossier : [(nom, taille, date)], la date à la minute, telle que l'imprimante l'affiche."""
+        maintenant, fichiers = datetime.now(), []
+        for ligne in self.recevoir("LIST " + dossier).decode("utf-8", "replace").splitlines():
+            m = LIGNE_LISTE.match(ligne.strip())
+            if not m or m.group(2).lower() not in MOIS_ANGLAIS:
+                continue
+            taille, mois, jour, heure, minute, annee, nom = m.groups()
+            try:
+                date = datetime(int(annee or maintenant.year), MOIS_ANGLAIS.index(mois.lower()) + 1, int(jour),
+                                int(heure or 0), int(minute or 0))
+            except ValueError:
+                continue
+            if not annee and date > maintenant + timedelta(days=1):  # l'année n'est pas dite pour les fichiers récents
+                date = date.replace(year=date.year - 1)
+            fichiers.append((nom, int(taille), date))
+        return fichiers
+
+    def recevoir(self, commande):
+        conn, _ = self.ntransfercmd(commande)
         recu = bytearray()
         try:
             while True:
@@ -1849,6 +1912,72 @@ class Carte(ftplib.FTP_TLS):
         return bytes(recu)
 
 
+MOIS_ANGLAIS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+LIGNE_LISTE = re.compile(r"^-\S+\s+\d+\s+\S+\s+\S+\s+(\d+)\s+([A-Za-z]{3})\s+(\d{1,2})\s+(?:(\d{1,2}):(\d{2})|(\d{4}))\s+(.+)$")
+MAXI_CARTE = 40 * 2 ** 20  # au-delà, un fichier d'impression n'est pas lu : trop long à transférer
+
+
+def ouvrir_carte(hote, port, code, serie, ac=None):
+    """Ouvre en lecture la carte mémoire de l'imprimante attendue. À refermer par `fermer_carte`."""
+    carte = Carte(context=contexte_bambu(ac))
+    carte.connect(hote, port, 25)
+    try:
+        if serie_du_certificat(carte.sock) != serie:  # le code n'est présenté qu'à l'imprimante attendue
+            raise AutreAppareil()
+        carte.login("bblp", code)
+        carte.prot_p()
+        return carte
+    except BaseException:
+        carte.close()
+        raise
+
+
+def fermer_carte(carte):
+    try:
+        carte.quit()
+    except Exception:
+        carte.close()
+
+
+def envoi_du_3mf(donnees, plateau=None):
+    """Ce que dit un fichier d'impression lu sur la carte, ou None s'il ne se lit pas."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(donnees)) as z:
+            noms = set(z.namelist())
+            if "Metadata/slice_info.config" not in noms:
+                return None
+            return envoi_de(ET.fromstring(z.read("Metadata/slice_info.config")), noms, [], plateau)
+    except (zipfile.BadZipFile, ET.ParseError, KeyError, ValueError):
+        return None
+
+
+def note_carte(carte, dossier, nom, plateau):
+    """La note que l'imprimante garde de chaque impression : de quel emplacement est parti chaque fil
+    du projet. {numéro du fil: emplacement}, vide si elle n'y est pas."""
+    chemin = "%s/%d_%s.bbl" % (dossier, plateau, nom)
+    if not nom or "\r" in chemin or "\n" in chemin or (carte.taille(chemin) or 65536) >= 65536:
+        return {}
+    try:
+        emplacements = json.loads(carte.lire(chemin).decode("utf-8", "replace")).get("ams mapping") or []
+    except (ValueError, AttributeError):
+        return {}
+    bacs = {}
+    for rang, bac in enumerate(emplacements if isinstance(emplacements, list) else []):
+        if isinstance(bac, int) and 0 <= bac < 16:
+            bacs[rang + 1] = "%d-%d" % (bac // 4, bac % 4)
+        elif bac == 254:
+            bacs[rang + 1] = EXTERNE
+    return bacs
+
+
+def lire_note(hote, port, code, serie, nom, plateau, ac=None):
+    carte = ouvrir_carte(hote, port, code, serie, ac)
+    try:
+        return note_carte(carte, "/cache", nom, plateau)
+    finally:
+        fermer_carte(carte)
+
+
 def chemins_carte(nom, fichier):
     """Où peut se trouver, sur la carte, le fichier d'une impression d'après ce que l'imprimante en annonce."""
     chemins = []
@@ -1860,54 +1989,61 @@ def chemins_carte(nom, fichier):
     return [c for c in dict.fromkeys(chemins) if "\r" not in c and "\n" not in c and ".." not in c]
 
 
-def lire_carte(hote, port, code, serie, nom, fichier, ac=None, maxi=40 * 2 ** 20):
+def lire_carte(hote, port, code, serie, nom, fichier, ac=None, maxi=MAXI_CARTE):
     """Lit sur la carte de l'imprimante le fichier de l'impression qu'elle annonce sous ce nom.
 
     Rend ce qu'il dit — grammes par fil, durée prévue — et `bacs` : {numéro du fil: emplacement},
     quand l'imprimante l'a noté. None si le fichier n'y est pas ou pèse trop lourd.
     """
-    carte = Carte(context=contexte_bambu(ac))
-    carte.connect(hote, port, 25)
+    carte = ouvrir_carte(hote, port, code, serie, ac)
     try:
-        if serie_du_certificat(carte.sock) != serie:  # le code n'est présenté qu'à l'imprimante attendue
-            raise AutreAppareil()
-        carte.login("bblp", code)
-        carte.prot_p()
         for chemin in chemins_carte(nom, fichier):
             taille = carte.taille(chemin)
             if taille is None:
                 continue
             if taille > maxi:
                 return None
-            with zipfile.ZipFile(io.BytesIO(carte.lire(chemin))) as z:
-                noms = set(z.namelist())
-                if "Metadata/slice_info.config" not in noms:
-                    return None
-                plateau = re.search(r"plate_(\d+)\.gcode$", fichier)
-                envoi = envoi_de(ET.fromstring(z.read("Metadata/slice_info.config")), noms, [],
-                                 plateau.group(1) if plateau else None)
-            if not envoi:
-                return None
-            envoi["bacs"] = {}
-            dossier = chemin.rsplit("/", 1)[0]
-            note = "%s/%d_%s.bbl" % (dossier, envoi["plateaux"][0], nom)
-            if nom and (carte.taille(note) or maxi) < 65536:  # la note que l'imprimante garde de chaque impression
-                try:
-                    emplacements = json.loads(carte.lire(note).decode("utf-8", "replace")).get("ams mapping") or []
-                except ValueError:
-                    emplacements = []
-                for rang, bac in enumerate(emplacements):
-                    if isinstance(bac, int) and 0 <= bac < 16:
-                        envoi["bacs"][rang + 1] = "%d-%d" % (bac // 4, bac % 4)
-                    elif bac == 254:
-                        envoi["bacs"][rang + 1] = EXTERNE
+            plateau = re.search(r"plate_(\d+)\.gcode$", fichier)
+            envoi = envoi_du_3mf(carte.lire(chemin), plateau.group(1) if plateau else None)
+            if envoi:
+                envoi["bacs"] = note_carte(carte, chemin.rsplit("/", 1)[0], nom, envoi["plateaux"][0])
             return envoi
         return None
     finally:
-        try:
-            carte.quit()
-        except Exception:
-            carte.close()
+        fermer_carte(carte)
+
+
+def placer_fils(entree, bacs, occupe, repere, bobines):
+    """Chaque fil du projet va à la bobine de l'emplacement que l'imprimante a noté pour lui : celle qui
+    s'y trouvait au départ de l'impression, sinon celle qui s'y trouve. Rend True si un fil a changé."""
+    premiers = (entree.get("suivi") or {}).get("premiers") or {}
+    seul, change = len(entree["fils"]) == 1, False
+    for f in entree["fils"]:
+        bac = bacs.get(f.get("numero") or (1 if seul else None))
+        if not bac or f.get("bobine_choisie"):
+            continue
+        avant = (f["couleur"], f["type"], f.get("bobine"), f.get("bac"))
+        f["bac"] = bac
+        o = premiers.get(bac) or occupe.get("%s:%s" % (repere, bac))
+        if o and o.get("cle"):
+            couleur, _, type_fil = o["cle"].partition("|")
+            if (couleur, type_fil) != (f["couleur"], f["type"]):
+                f.setdefault("projet", {"couleur": f["couleur"], "type": f["type"]})
+            f.update(couleur=couleur, type=type_fil)
+            if o.get("bobine"):
+                f["bobine"] = o["bobine"]
+            else:
+                f.pop("bobine", None)
+        change = change or avant != (f["couleur"], f["type"], f.get("bobine"), f["bac"])
+    if change:
+        poser_prix(entree, bobines)
+    return appliquer_changements(entree, bobines) or change
+
+
+def meme_impression(e, pesee, debut, fin):
+    """Une impression du journal qui a le même poids par fil, dans cette fenêtre de temps."""
+    return (not e.get("supprimee") and debut <= e["date"] <= fin
+            and sorted(((f.get("projet") or f)["couleur"], (f.get("projet") or f)["type"], f["g"]) for f in e["fils"]) == pesee)
 
 
 class Parc:
@@ -1919,6 +2055,7 @@ class Parc:
         self.stabilisation, self.remplacement = delais
         self.attente_studio = min(ATTENTE_STUDIO, 6 * self.stabilisation)
         self.port_carte = 990  # la carte mémoire des imprimantes se lit par là
+        self.historique, self.fil_historique = None, None  # la reprise de l'historique des cartes, et où elle en est
         self.cache_bobines = (None, {})
         self.imprimantes = {}  # repère → Imprimante écoutée
         self.connues = {}      # repère → numéro de série, pour celles que Bambu Studio connaît
@@ -1991,7 +2128,11 @@ class Parc:
         etats = {}
         for repere, imprimante in list(self.imprimantes.items()):
             t = imprimante.tache
-            etats[repere] = {"etat": imprimante.etat, "entendue": "gcode_state" in imprimante.vue, "tache": t and {
+            textes = textes_erreurs(imprimante.serie, self.conf)
+            erreurs = sorted(set().union(*imprimante.erreurs.values()))
+            etats[repere] = {"etat": imprimante.etat, "entendue": "gcode_state" in imprimante.vue,
+                             "erreurs": [{"code": code_lisible(c), "texte": textes.get(c, "")} for c in erreurs],
+                             "tache": t and {
                 "ident": t["ident"], "percent": t["percent"], "pause": t["etat"] == "PAUSE",
                 "nom": str(imprimante.vue.get("subtask_name") or imprimante.vue.get("gcode_file") or "")}}
         return etats
@@ -2010,6 +2151,26 @@ class Parc:
                               "etat": ETATS_COURTS.get(imprimante.etat, "") if imprimante else "",
                               "adresse": manuelles[repere]["adresse"].replace(":8883", "") if repere in manuelles else ""})
             return liste
+
+    def reprendre_historique(self):
+        """Lance la reprise des impressions passées gardées sur la carte des imprimantes suivies."""
+        if self.fil_historique and self.fil_historique.is_alive():
+            return False
+        self.historique = {"etat": "en cours", "lus": 0, "total": 0, "ajoutees": 0, "deja": 0, "sautees": []}
+        self.fil_historique = threading.Thread(target=self.lire_historique, daemon=True)
+        self.fil_historique.start()
+        return True
+
+    def lire_historique(self):
+        bilan = self.historique
+        for imprimante in list(self.imprimantes.values()):
+            try:
+                imprimante.reprendre_historique(bilan)
+            except Exception as e:  # imprimante occupée, carte absente… : on le dit, sans s'arrêter là
+                bilan["sautees"].append("%s : carte illisible" % self.nom(imprimante.repere))
+                print("historique illisible :", type(e).__name__, flush=True)
+        bilan["etat"] = "fini"
+        print("historique repris :", bilan["ajoutees"], "impressions ajoutées", flush=True)
 
     def renommer(self, repere, nom):
         with self.ecriture:
@@ -2098,6 +2259,8 @@ class Imprimante(threading.Thread):
         self.bac_actif = None
         self.dernier = 0.0   # heure du dernier départ ou de la dernière fin d'impression vus sur cette imprimante
         self.coupures = []   # emplacements vidés pendant l'impression, notés hors du verrou des emplacements
+        self.erreurs = {}    # « hms », « impression » → codes d'erreur que l'imprimante signale en ce moment
+        self.verrou_carte = threading.Lock()  # une seule lecture de la carte à la fois
         self.arret = threading.Event()  # levé quand l'imprimante n'est plus à suivre
 
     def noter(self, etat, detail=""):
@@ -2206,8 +2369,41 @@ class Imprimante(threading.Thread):
         try:
             self.noter_bac()
             self.suivre_impression(p)
+            self.lire_erreurs(p)
         except (KeyError, TypeError, ValueError) as e:
             print("impression mal comprise :", repr(e), flush=True)
+
+    def lire_erreurs(self, p):
+        """Les erreurs que l'imprimante signale : ses alertes (HMS) et ce qui met l'impression en pause.
+        Une fenêtre pour chaque nouvelle ; celles déjà là quand l'écoute commence sont seulement affichées."""
+        lues = {}
+        if isinstance(p.get("hms"), list):
+            lues["hms"] = set()
+            for h in p["hms"]:
+                try:
+                    lues["hms"].add("%08X%08X" % (int(h["attr"]), int(h["code"])))
+                except (KeyError, TypeError, ValueError):
+                    continue
+        if "print_error" in p:
+            try:
+                n = int(p["print_error"])
+            except (TypeError, ValueError):
+                n = 0
+            # Une impression annulée ou finie n'est pas une erreur à signaler : la fin d'impression le dit.
+            lues["impression"] = {"%08X" % n} if n and self.vue.get("gcode_state") in self.EN_COURS else set()
+        nouvelles = []
+        for nature, codes in lues.items():
+            if nature in self.erreurs:
+                nouvelles += sorted(codes - self.erreurs[nature])
+            self.erreurs[nature] = codes
+        if not nouvelles:
+            return
+        textes = textes_erreurs(self.serie, self.parc.conf)
+        qui = "« %s »" % self.parc.nom(self.repere) if len(self.parc.imprimantes) > 1 else "L'imprimante"
+        lignes = ["%s (%s)" % (textes[c], code_lisible(c)) if c in textes else "Erreur %s." % code_lisible(c) for c in nouvelles]
+        print("erreur signalée :", ", ".join(code_lisible(c) for c in nouvelles), flush=True)
+        self.parc.fenetres.montrer("%s signale un problème.\n%s" % (qui, "\n".join(lignes)),
+                                   "Le détail et la marche à suivre sont aussi dans Bambu Studio et Bambu Handy.")
 
     def lire_bac(self, cle, bac):
         """Retient ce qu'un emplacement dit de sa bobine : fil, puce, reste."""
@@ -2367,6 +2563,7 @@ class Imprimante(threading.Thread):
             if choisies:
                 t["vus"] = {}  # ce qui alimente l'impression sera noté sur elle à la prochaine annonce
                 choisies[-1]["tache"] = t["ident"]
+                choisies[-1]["nom_imprimante"] = str(self.vue.get("subtask_name") or "")
                 if not choisies[-1].get("imprimante_choisie"):
                     choisies[-1]["imprimante"] = self.repere
                 ecrire_json(self.parc.donnees, "impressions.json", journal)
@@ -2438,6 +2635,87 @@ class Imprimante(threading.Thread):
                                        "Le fil utilisé reste à indiquer sur la page." if a_saisir else "")
         if entree.get("a_completer"):
             self.lire_carte(entree)
+        elif entree.get("source", "studio") == "studio" and lire_reglages(self.parc.donnees)["carte"] and self.ip and self.serie:
+            nom = entree.get("nom_imprimante") or str(self.vue.get("subtask_name") or "")
+            threading.Thread(target=self.noter_emplacements, daemon=True,
+                             args=(entree["cle"], nom, (entree.get("plateaux") or [1])[0])).start()
+
+    def noter_emplacements(self, cle, nom, plateau):
+        """Lit la note que l'imprimante garde de l'impression : de quel emplacement chaque fil est vraiment
+        parti. Elle remplace la couleur la plus proche, devinée quand le projet a plusieurs fils."""
+        try:
+            with self.verrou_carte:
+                bacs = lire_note(self.ip, self.parc.port_carte, self.parc.code(self), self.serie, nom, plateau, self.parc.ac)
+        except Exception as e:
+            print("note de l'imprimante illisible :", type(e).__name__, flush=True)
+            return
+        if not bacs:
+            return
+        with verrou:
+            journal, bobines = lire_journal(self.parc.donnees), lire_bobines(self.parc.donnees)
+            entree = next((e for e in journal if e.get("cle") == cle and not e.get("supprimee")), None)
+            if entree and placer_fils(entree, bacs, occupation(self.parc.places(), bobines, annonces_sures=False),
+                                      self.repere, bobines):
+                ecrire_json(self.parc.donnees, "impressions.json", journal)
+                print("emplacements lus sur l'imprimante :", entree["projet"], flush=True)
+
+    def reprendre_historique(self, bilan):
+        """Ajoute les impressions passées dont la carte garde le fichier, une seule fois chacune. Lecture
+        seule ; on s'arrête si une impression commence."""
+        nom = self.parc.nom(self.repere)
+        if self.etat != "connectee" or not self.ip or not self.serie:
+            bilan["sautees"].append("%s : injoignable" % nom)
+            return
+        if self.tache:
+            bilan["sautees"].append("%s : en train d'imprimer" % nom)
+            return
+        with self.verrou_carte:
+            carte = ouvrir_carte(self.ip, self.parc.port_carte, self.parc.code(self), self.serie, self.parc.ac)
+            try:
+                fichiers = sorted((x for x in carte.lister("/cache") if x[0].lower().endswith(".3mf")), key=lambda x: x[2])
+                bilan["total"] += len(fichiers)
+                for fichier, taille, date in fichiers:
+                    if self.tache:
+                        bilan["sautees"].append("%s : interrompue, une impression a commencé" % nom)
+                        return
+                    cle = "carte|%s|%s|%d" % (self.repere, fichier, taille)
+                    if taille <= MAXI_CARTE and not any(e.get("cle") == cle for e in lire_journal(self.parc.donnees)):
+                        envoi = envoi_du_3mf(carte.lire("/cache/" + fichier))
+                        if envoi:
+                            bacs = note_carte(carte, "/cache", fichier[:-4], envoi["plateaux"][0])
+                            self.ajouter_ancienne(cle, fichier, date, envoi, bacs, bilan)
+                    bilan["lus"] += 1
+            finally:
+                fermer_carte(carte)
+
+    def ajouter_ancienne(self, cle, fichier, date, envoi, bacs, bilan):
+        iso = date.isoformat(timespec="seconds")
+        entree = {"cle": cle, "date": iso, "projet": nom_tache(fichier), "fichier": "", "etat": "terminee",
+                  "source": "carte", "imprimante": self.repere, "secondes": envoi["secondes"],
+                  "plateaux": envoi["plateaux"], "fils": [dict(f) for f in envoi["fils"]]}
+        for f in entree["fils"]:
+            if bacs.get(f.get("numero")):
+                f["bac"] = bacs[f["numero"]]
+        pesee = sorted((f["couleur"], f["type"], f["g"]) for f in entree["fils"])
+        debut = (date - timedelta(minutes=45)).isoformat(timespec="seconds")
+        fin = (date + timedelta(minutes=45)).isoformat(timespec="seconds")
+        with verrou:
+            journal, bobines = lire_journal(self.parc.donnees), lire_bobines(self.parc.donnees)
+            if any(meme_impression(e, pesee, debut, fin) for e in journal):  # déjà comptée d'ici
+                bilan["deja"] += 1
+                return
+            # Seules les bobines déjà suivies à cette date peuvent l'avoir fournie : une impression manquée
+            # (ordinateur éteint) se déduit d'elles, une impression d'avant BlokBambu ne touche à aucune.
+            anciennes = {i: b for i, b in bobines.items() if b.get("depuis", "") <= iso}
+            for f in entree["fils"]:
+                choix = bobine_probable(cle_fil(f), anciennes, {})
+                if choix:
+                    f["bobine"] = choix
+            poser_prix(entree, bobines)
+            journal.append(entree)
+            journal.sort(key=lambda e: e["date"])
+            ecrire_json(self.parc.donnees, "impressions.json", journal)
+        bilan["ajoutees"] += 1
 
     def lire_carte(self, entree):
         """Va lire sur la carte de l'imprimante le fichier d'une impression lancée ailleurs, pour connaître
@@ -2448,7 +2726,8 @@ class Imprimante(threading.Thread):
 
     def completer(self, cle, nom, fichier):
         try:
-            lu = lire_carte(self.ip, self.parc.port_carte, self.parc.code(self), self.serie, nom, fichier, self.parc.ac)
+            with self.verrou_carte:
+                lu = lire_carte(self.ip, self.parc.port_carte, self.parc.code(self), self.serie, nom, fichier, self.parc.ac)
         except Exception as e:  # carte absente, imprimante occupée… : la saisie à la main reste possible
             print("carte de l'imprimante illisible :", type(e).__name__, flush=True)
             return
@@ -2484,20 +2763,9 @@ class Imprimante(threading.Thread):
                     attribuer_bacs(entree, self.fils_utilises(vus, bobines), bobines, True)
             # Chaque fil va à la bobine de l'emplacement que l'imprimante a noté pour lui.
             occupe = occupation(self.parc.places(), bobines, annonces_sures=False)
+            placer_fils(entree, lu["bacs"], occupe, self.repere, bobines)
             for f in entree["fils"]:
-                if f.get("bobine_choisie"):
-                    continue
-                o = occupe.get("%s:%s" % (self.repere, lu["bacs"].get(f.get("numero"))))
-                if o:
-                    couleur, _, type_fil = o["cle"].partition("|")
-                    if (couleur, type_fil) != (f["couleur"], f["type"]):
-                        f.setdefault("projet", {"couleur": f["couleur"], "type": f["type"]})
-                    f.update(couleur=couleur, type=type_fil, bac=lu["bacs"][f["numero"]])
-                    if o["bobine"]:
-                        f["bobine"] = o["bobine"]
-                    else:
-                        f.pop("bobine", None)
-                elif not f.get("bobine"):
+                if not f.get("bobine") and not f.get("bobine_choisie") and not lu["bacs"].get(f.get("numero")):
                     choix = bobine_probable(cle_fil(f), bobines, occupe)
                     if choix:
                         f["bobine"] = choix

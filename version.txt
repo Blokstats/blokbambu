@@ -1,2 +1,2 @@
-2
-Bobine changée en cours d'impression : le fil se partage entre les deux bobines
+3
+Erreurs de l'imprimante en clair, emplacement exact de chaque fil, reprise de l'historique de la carte
