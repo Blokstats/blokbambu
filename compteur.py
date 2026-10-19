@@ -2388,6 +2388,8 @@ class Imprimante(threading.Thread):
             self.noter_bac()
             self.suivre_impression(p)
             self.lire_erreurs(p)
+            if self.parc.historique and self.parc.historique.get("etat") == "en attente":  # au repos à présent ?
+                self.parc.historique_si_possible()
         except (KeyError, TypeError, ValueError) as e:
             print("impression mal comprise :", repr(e), flush=True)
 
@@ -2653,7 +2655,6 @@ class Imprimante(threading.Thread):
             a_saisir = entree.get("a_completer") and not lire_reglages(self.parc.donnees)["carte"]
             self.parc.fenetres.montrer(titre + ("\n" + " · ".join(details) if details else ""),
                                        "Le fil utilisé reste à indiquer sur la page." if a_saisir else "")
-        self.parc.historique_si_possible()
         if entree.get("a_completer"):
             self.lire_carte(entree)
         elif entree.get("source", "studio") == "studio" and lire_reglages(self.parc.donnees)["carte"] and self.ip and self.serie:

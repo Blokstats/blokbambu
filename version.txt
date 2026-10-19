@@ -1,2 +1,2 @@
-4
+5
 Reprise de l'historique qui attend l'imprimante au repos ; bobine changée en cours d'impression gardée même après un redémarrage
