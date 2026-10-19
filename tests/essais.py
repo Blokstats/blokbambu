@@ -565,7 +565,13 @@ def essais_a_part():
             fichier.write("; g-code seul : laissé de côté\n")
         il_y_a_deux_jours = time.time() - 2 * 86400
         os.utime(ancienne, (il_y_a_deux_jours, il_y_a_deux_jours))
-        verifier("reprise lancée depuis les réglages", poster("/imprimante/historique", {}) == 200)
+        dicter({"gcode_state": "RUNNING", "subtask_name": "Occupée_plate_1", "subtask_id": "4460", "mc_percent": 50})
+        time.sleep(1.5)
+        verifier("reprise demandée pendant une impression : elle attend", poster("/imprimante/historique", {}) == 200
+                 and etat(port)["reglages"]["historique"]["etat"] == "en attente", str(etat(port)["reglages"]["historique"]))
+        time.sleep(2)
+        verifier("rien n'est lu sur la carte tant que l'imprimante imprime", "LIST" not in banc.lu("carte.log"), banc.lu("carte.log")[-300:])
+        dicter({"gcode_state": "FINISH", "mc_percent": 100})
         bilan = attendre(lambda: etat(port)["reglages"]["historique"]["etat"] == "fini" and etat(port)["reglages"]["historique"]) or {}
         verifier("l'impression ancienne est ajoutée, celle déjà comptée reconnue",
                  bilan.get("ajoutees") == 1 and bilan.get("deja") == 1 and bilan.get("total") == 2, str(bilan))

@@ -978,8 +978,9 @@ function dessinerReglages() {
     : "Les appareils du même Wi-Fi pourront ouvrir cette page, après avoir saisi un code.";
   $("rLien").textContent = etat.site;
   var h = r.historique;
-  $("rHistorique").disabled = !!(h && h.etat === "en cours");
+  $("rHistorique").disabled = !!(h && (h.etat === "en cours" || h.etat === "en attente"));
   $("rHistoriqueAide").textContent = !h ? "Ajoute les impressions passées dont l'imprimante garde le fichier, une seule fois chacune. Quelques minutes, imprimante allumée et au repos. Une impression relancée plusieurs fois n'y laisse qu'un fichier, et la carte ne dit pas si elle a été menée au bout."
+    : h.etat === "en attente" ? "Demandée : elle commencera dès que l'imprimante sera allumée et au repos, même si l'ordinateur redémarre d'ici là"
     : (h.etat === "en cours" ? "Lecture de la carte : " + h.lus + " fichier" + (h.lus > 1 ? "s" : "") + " sur " + (h.total || "…")
        : "Terminé : " + pluriel(h.ajoutees, "impression") + " ajoutée" + (h.ajoutees > 1 ? "s" : "") + (h.deja ? ", " + h.deja + " déjà comptée" + (h.deja > 1 ? "s" : "") : ""))
       + (h.sautees.length ? ". " + h.sautees.join(" ; ") : "") + ".";

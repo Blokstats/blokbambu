@@ -2055,7 +2055,11 @@ class Parc:
         self.stabilisation, self.remplacement = delais
         self.attente_studio = min(ATTENTE_STUDIO, 6 * self.stabilisation)
         self.port_carte = 990  # la carte mémoire des imprimantes se lit par là
-        self.historique, self.fil_historique = None, None  # la reprise de l'historique des cartes, et où elle en est
+        # La reprise de l'historique des cartes et où elle en est ; demandée, elle attend une imprimante au repos,
+        # même si BlokBambu redémarre entre-temps.
+        self.historique, self.fil_historique = lire(donnees, "historique.json", None), None
+        if isinstance(self.historique, dict) and self.historique.get("etat") == "en cours":
+            self.historique["etat"] = "en attente"  # interrompue par un arrêt : elle reprendra (sans doublons)
         self.cache_bobines = (None, {})
         self.imprimantes = {}  # repère → Imprimante écoutée
         self.connues = {}      # repère → numéro de série, pour celles que Bambu Studio connaît
@@ -2153,16 +2157,29 @@ class Parc:
             return liste
 
     def reprendre_historique(self):
-        """Lance la reprise des impressions passées gardées sur la carte des imprimantes suivies."""
+        """Demande la reprise des impressions passées gardées sur la carte des imprimantes suivies. Elle
+        part dès qu'une imprimante est allumée et au repos."""
         if self.fil_historique and self.fil_historique.is_alive():
             return False
-        self.historique = {"etat": "en cours", "lus": 0, "total": 0, "ajoutees": 0, "deja": 0, "sautees": []}
+        self.historique = {"etat": "en attente", "lus": 0, "total": 0, "ajoutees": 0, "deja": 0, "sautees": []}
+        ecrire_json(self.donnees, "historique.json", self.historique)
+        self.historique_si_possible()
+        return True
+
+    def historique_si_possible(self):
+        """Lance la reprise demandée, si une imprimante est maintenant disponible."""
+        h = self.historique
+        if not isinstance(h, dict) or h.get("etat") != "en attente" or (self.fil_historique and self.fil_historique.is_alive()):
+            return
+        if not any(i.disponible() for i in list(self.imprimantes.values())):
+            return
+        h.update(etat="en cours", lus=0, total=0, ajoutees=0, deja=0, sautees=[])
         self.fil_historique = threading.Thread(target=self.lire_historique, daemon=True)
         self.fil_historique.start()
-        return True
 
     def lire_historique(self):
         bilan = self.historique
+        ecrire_json(self.donnees, "historique.json", bilan)
         for imprimante in list(self.imprimantes.values()):
             try:
                 imprimante.reprendre_historique(bilan)
@@ -2170,6 +2187,7 @@ class Parc:
                 bilan["sautees"].append("%s : carte illisible" % self.nom(imprimante.repere))
                 print("historique illisible :", type(e).__name__, flush=True)
         bilan["etat"] = "fini"
+        ecrire_json(self.donnees, "historique.json", bilan)
         print("historique repris :", bilan["ajoutees"], "impressions ajoutées", flush=True)
 
     def renommer(self, repere, nom):
@@ -2612,8 +2630,10 @@ class Imprimante(threading.Thread):
                 entree["part"] = round(percent / 100, 2)
             if actif:
                 entree["duree"] = round(actif)
-            premiers = (entree.get("suivi") or {}).get("premiers")
-            attribuer_bacs(entree, self.fils_utilises(bacs, bobines, premiers), bobines, True)
+            # Les emplacements notés sur l'impression comptent aussi : l'ordinateur a pu redémarrer en cours de route.
+            premiers = (entree.get("suivi") or {}).get("premiers") or {}
+            vus = list(dict.fromkeys(list(premiers) + list(bacs)))
+            attribuer_bacs(entree, self.fils_utilises(vus, bobines, premiers), bobines, True)
             print("impression", "terminée :" if etat == "FINISH" else "arrêtée à %d %% :" % percent, entree["projet"], flush=True)
             finie.append(dict(entree))
             return True
@@ -2633,6 +2653,7 @@ class Imprimante(threading.Thread):
             a_saisir = entree.get("a_completer") and not lire_reglages(self.parc.donnees)["carte"]
             self.parc.fenetres.montrer(titre + ("\n" + " · ".join(details) if details else ""),
                                        "Le fil utilisé reste à indiquer sur la page." if a_saisir else "")
+        self.parc.historique_si_possible()
         if entree.get("a_completer"):
             self.lire_carte(entree)
         elif entree.get("source", "studio") == "studio" and lire_reglages(self.parc.donnees)["carte"] and self.ip and self.serie:
@@ -2659,6 +2680,11 @@ class Imprimante(threading.Thread):
                 ecrire_json(self.parc.donnees, "impressions.json", journal)
                 print("emplacements lus sur l'imprimante :", entree["projet"], flush=True)
 
+    def disponible(self):
+        """Allumée, reliée, et au repos : sa carte peut se lire sans gêner une impression."""
+        return (self.etat == "connectee" and bool(self.ip and self.serie) and not self.tache
+                and self.vue.get("gcode_state") not in (None,) + self.EN_COURS)
+
     def reprendre_historique(self, bilan):
         """Ajoute les impressions passées dont la carte garde le fichier, une seule fois chacune. Lecture
         seule ; on s'arrête si une impression commence."""
@@ -2666,8 +2692,8 @@ class Imprimante(threading.Thread):
         if self.etat != "connectee" or not self.ip or not self.serie:
             bilan["sautees"].append("%s : injoignable" % nom)
             return
-        if self.tache:
-            bilan["sautees"].append("%s : en train d'imprimer" % nom)
+        if not self.disponible():
+            bilan["sautees"].append("%s : en train d'imprimer" % nom if self.tache else "%s : pas encore au repos" % nom)
             return
         with self.verrou_carte:
             carte = ouvrir_carte(self.ip, self.parc.port_carte, self.parc.code(self), self.serie, self.parc.ac)
@@ -2875,6 +2901,7 @@ def main():
             vu = maintenant
             parc.actualiser()
             rattacher(o.donnees)
+            parc.historique_si_possible()
         reseau = lire_reglages(o.donnees)["reseau"]
         if serveur is not None and ouvert != reseau:  # le réglage a changé : la page change de porte
             serveur.shutdown()
