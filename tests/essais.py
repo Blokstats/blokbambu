@@ -485,7 +485,7 @@ def essais_a_part():
         dicter({"gcode_state": "PREPARE", "subtask_name": "Du téléphone_plate_1", "subtask_id": "4300", "mc_percent": 0,
                 "gcode_file": "/data/Metadata/plate_1.gcode"})
         dicter({"gcode_state": "RUNNING", "mc_percent": 20, "ams": {"tray_now": "0"}})
-        verifier("entre deux impressions, l'imprimante est dite au repos", etat(port)["imprimantes"][0]["repos"] is True)
+        verifier("entre deux impressions, l'imprimante est dite au repos", attendre(lambda: etat(port)["imprimantes"][0]["repos"] is True))
         verifier("la carte de l'imprimante dit ce qu'elle imprime", attendre(lambda: etat(port)["imprimantes"][0]["impression"] == {
             "projet": "Du téléphone", "percent": 20, "pause": False} and etat(port)["imprimantes"][0]["repos"] is False),
             str(etat(port)["imprimantes"][0]))
