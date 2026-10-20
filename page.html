@@ -158,6 +158,9 @@ main{ position:relative; z-index:1; max-width:1100px; margin:0 auto; padding:32p
 .fil{ display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text); white-space:nowrap; font-variant-numeric:tabular-nums; }
 .fil .pastille{ width:9px; height:9px; }
 .filtres{ display:flex; flex-wrap:wrap; gap:7px; margin:-4px 0 14px; }
+.plus-impressions{ width:100%; background:none; border:none; justify-content:center; cursor:pointer; color:var(--muted2);
+  font-size:12px; font-weight:600; letter-spacing:.02em; font-family:inherit; transition:color .15s, background .15s; }
+.plus-impressions:hover{ color:#fff; background:rgba(255,255,255,.03); }
 .vide{ text-align:center; color:var(--muted2); font-size:12px; line-height:1.6; padding:34px 20px;
   background:var(--panel); border:1px solid var(--border); border-radius:var(--r); }
 .alerte{ font-size:13px; line-height:1.5; color:var(--text); background:rgba(239,0,202,.07);
@@ -443,7 +446,8 @@ select.saisie{ font-size:13px; padding:10px 10px; }
 var MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 var PRESETS = [1000, 750, 500, 250];
 var PARTS = [100, 75, 50, 25, 0];
-var etat = null, brut = "", fiche = null, impression = null, filtre = "", imprimantesVues = "";
+var etat = null, brut = "", fiche = null, impression = null, filtre = "", imprimantesVues = "", toutes = false;
+var VISIBLES = 5;  // les dernières impressions ; le reste s'ouvre d'un clic
 
 function $(id) { return document.getElementById(id); }
 function e(t) { return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) {
@@ -650,8 +654,9 @@ function rendre() {
   $("filtres").innerHTML = plusieurs ? [{ id: "", nom: "Toutes" }].concat(s.machines).map(function (m) {
     return '<button class="puce' + (m.id === filtre ? " active" : "") + '" data-filtre="' + e(m.id) + '">' + e(m.nom) + "</button>"; }).join("") : "";
   h = "";
-  s.impressions.forEach(function (i) {
-    if (filtre && i.imprimante !== filtre) return;
+  var listees = s.impressions.filter(function (i) { return !filtre || i.imprimante === filtre; });
+  var cachees = toutes ? 0 : Math.max(listees.length - VISIBLES, 0);
+  listees.slice(0, listees.length - cachees).forEach(function (i) {
     var notes = [jour(i.date, true) + " à " + heure(i.date)];
     if (i.secondes) notes.push(duree(i.secondes));
     if (plusieurs && i.imprimante) notes.push(e(machine(i.imprimante)));
@@ -668,6 +673,8 @@ function rendre() {
       (i.a_completer ? '<button class="btn petit jaune" data-impression="' + e(i.id) + '">Compléter</button>'
                      : '<button class="btn petit" data-impression="' + e(i.id) + '">Modifier</button>') + "</div>";
   });
+  if (cachees) h += '<button class="ligne plus-impressions" data-toutes="1">+ ' + cachees + (cachees > 1 ? " autres impressions" : " autre impression") + "</button>";
+  else if (listees.length > VISIBLES) h += '<button class="ligne plus-impressions" data-toutes="">Voir seulement les ' + VISIBLES + " dernières</button>";
   $("impressions").innerHTML = h ? '<div class="table">' + h + "</div>" :
     '<div class="vide">' + (filtre ? "Aucune impression comptée pour cette imprimante." : "Aucune impression comptée pour l'instant.") + "</div>";
 
@@ -1052,7 +1059,7 @@ $("gerer").addEventListener("click", ouvrirReglages);
 // ---------------------------------------------------------------- commun
 
 document.addEventListener("click", function (ev) {
-  var b = ev.target.closest("[data-fiche], [data-impression], [data-fermer], [data-alerte], [data-copier], [data-maj], [data-filtre]");
+  var b = ev.target.closest("[data-fiche], [data-impression], [data-fermer], [data-alerte], [data-copier], [data-maj], [data-filtre], [data-toutes]");
   if (!b) return;
   if (b.dataset.fermer !== undefined) { b.closest("dialog").close(); return; }
   if (b.dataset.alerte) { envoyer("/alerte/fermer", { id: b.dataset.alerte }); return; }
@@ -1060,6 +1067,7 @@ document.addEventListener("click", function (ev) {
   if (!etat) return;
   if (b.dataset.maj) { memoire("maj", b.dataset.maj); rendre(); }
   else if (b.dataset.filtre !== undefined) { filtre = b.dataset.filtre; rendre(); }
+  else if (b.dataset.toutes !== undefined) { toutes = !!b.dataset.toutes; rendre(); }
   else if (b.dataset.fiche) ouvrir(b.dataset.fiche, b.dataset.mode);
   else ouvrirImpression(b.dataset.impression);
 });

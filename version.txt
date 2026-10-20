@@ -1,2 +1,2 @@
-5
-Reprise de l'historique qui attend l'imprimante au repos ; bobine changée en cours d'impression gardée même après un redémarrage
+6
+Les 5 dernières impressions, le reste d'un clic ; couleurs de l'historique repris non proposées au suivi

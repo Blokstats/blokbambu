@@ -1045,7 +1045,7 @@ def etat_page(donnees, parc=None, local=True, port=PORT, nouveautes=None):
         return {"impressions": c["impressions"], "g": round(c["g"], 2), "secondes": round(c["secondes"]),
                 "cout": round(c["cout"], 2) if c["prix"] else None}
 
-    totaux, mois, machines = {}, {}, {}
+    totaux, mois, machines, imprimees = {}, {}, {}, set()
     for entree in journal:
         p, prix, duree = part(entree), cout(entree), temps(entree)
         grammes = sum(f["g"] for f in entree["fils"]) * p
@@ -1062,6 +1062,8 @@ def etat_page(donnees, parc=None, local=True, port=PORT, nouveautes=None):
         for f in entree["fils"]:
             if not f["g"]:  # impression à compléter : ses grammes ne sont pas encore connus
                 continue
+            if entree.get("source") != "carte":
+                imprimees.add(cle_fil(f))
             t = totaux.setdefault(cle_fil(f), {"noms": [], "g": 0.0, "m": 0.0, "n": 0})
             t["g"] += f["g"] * p
             t["m"] += f["m"] * p
@@ -1131,10 +1133,11 @@ def etat_page(donnees, parc=None, local=True, port=PORT, nouveautes=None):
         reste_total += max(f["reste"], 0)
         cartes.append(f)
 
-    # Fils chargés sur l'imprimante ou déjà imprimés, sans bobine suivie.
+    # Fils chargés sur l'imprimante ou imprimés depuis que BlokBambu compte, sans bobine suivie. Ceux
+    # de l'historique repris sur la carte ne sont pas proposés : ce sont souvent des bobines finies depuis.
     avec_bobine = {cle_fil(b) for b in bobines.values()}
     a_suivre = []
-    for cle in sorted((c for c in set(totaux) | set(sans_bobine)
+    for cle in sorted((c for c in imprimees | set(sans_bobine)
                        if c not in puces and (c in sans_bobine or c not in avec_bobine)), key=cle_tri):
         f = fiche(cle, sans_bobine.get(cle, []))
         f["marque"] = marque_probable(cle)
@@ -2186,7 +2189,8 @@ class Parc:
             except Exception as e:  # imprimante occupée, carte absente… : on le dit, sans s'arrêter là
                 bilan["sautees"].append("%s : carte illisible" % self.nom(imprimante.repere))
                 print("historique illisible :", type(e).__name__, flush=True)
-        bilan["etat"] = "fini"
+        # Interrompue par une impression : elle reprendra après, sans relire ce qui est déjà ajouté.
+        bilan["etat"] = "en attente" if bilan.pop("interrompue", False) else "fini"
         ecrire_json(self.donnees, "historique.json", bilan)
         print("historique repris :", bilan["ajoutees"], "impressions ajoutées", flush=True)
 
@@ -2703,7 +2707,7 @@ class Imprimante(threading.Thread):
                 bilan["total"] += len(fichiers)
                 for fichier, taille, date in fichiers:
                     if self.tache:
-                        bilan["sautees"].append("%s : interrompue, une impression a commencé" % nom)
+                        bilan["interrompue"] = True
                         return
                     cle = "carte|%s|%s|%d" % (self.repere, fichier, taille)
                     if taille <= MAXI_CARTE and not any(e.get("cle") == cle for e in lire_journal(self.parc.donnees)):
