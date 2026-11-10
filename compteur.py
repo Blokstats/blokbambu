@@ -1459,16 +1459,36 @@ def lancer_serveur(donnees, port, parc=None, reseau=False, nouveautes=None):
                         return self.bon(False)
                     # Une bobine neuve part de son poids : seules les impressions suivantes s'en déduisent.
                     # Celle qu'elle remplace n'est plus suivie ; ses impressions gardent leur coût.
-                    bobines.pop(champs.get("remplace", ""), None)
+                    remplacee = champs.get("remplace", "")
+                    bobines.pop(remplacee, None)
                     ident = secrets.token_hex(4)
                     bobines[ident] = {"couleur": choisie[0], "type": choisie[1], "marque": marque, "poids": grammes,
                                       "prix": prix or None, "reserve": reserve,
                                       "depuis": datetime.now().isoformat(timespec="seconds")}
                     poser_bobine(bobines, ident, emplacement)
+                    if remplacee:
+                        self.reprendre_lancees(remplacee, ident, bobines)
                 if marque and marque not in marques_proposees(donnees):  # une marque nouvelle est retenue
                     ecrire_json(donnees, "marques.json", lire(donnees, "marques.json", []) + [marque])
                 ecrire_json(donnees, "bobines.json", bobines)
             self.bon(id=ident)
+
+        def reprendre_lancees(self, ancienne, neuve, bobines):
+            """Bobine neuve posée juste après avoir lancé une impression : c'est d'elle que part l'impression,
+            tant que l'imprimante ne l'a pas encore commencée avec l'ancienne (sinon, c'est un relais)."""
+            journal, limite = lire_journal(donnees), (datetime.now() - timedelta(minutes=10)).isoformat(timespec="seconds")
+            reprises = 0
+            for entree in journal:
+                if (entree.get("supprimee") or entree.get("etat", "lancee") != "lancee" or entree["date"] < limite
+                        or (entree.get("suivi") or {}).get("premiers")):
+                    continue
+                for fil in entree["fils"]:
+                    if fil.get("bobine") == ancienne and not fil.get("bobine_choisie") and not fil.get("relais"):
+                        fil["bobine"] = neuve
+                        reprises += 1
+                poser_prix(entree, bobines)
+            if reprises:
+                ecrire_json(donnees, "impressions.json", journal)
 
         # ----- impressions
 

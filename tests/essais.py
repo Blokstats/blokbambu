@@ -338,6 +338,14 @@ def essais_a_part():
         b = bobine(NOIR)
         verifier("« Nouvelle bobine » remet à neuf et prend la place de l'ancienne",
                  b["reste"] == 1000 and b["part"] == 1 and b["id"] != ancienne and len(etat(port)["bobines"]) == 1, str(b))
+        envoi(racine, "12_03_00#1#20", 20, [(NOIR, "PLA", 30.0)], origine="Juste avant.3mf")
+        verifier("impression lancée sur la bobine en place", attendre(lambda: impression("Juste avant")) and bobine(NOIR)["reste"] == 970)
+        poster("/bobine", {"couleur": NOIR, "type": "PLA", "poids": "1000", "marque": "Ma Marque Maison", "prix": "30", "remplace": b["id"]})
+        verifier("bobine neuve posée juste après le lancement : l'impression part d'elle",
+                 impression("Juste avant")["fils"][0]["bobine"] == bobine(NOIR)["id"] and bobine(NOIR)["reste"] == 970,
+                 str((impression("Juste avant"), bobine(NOIR))))
+        poster("/impression/supprimer", {"id": impression("Juste avant")["id"]})
+        b = bobine(NOIR)
         verifier("une marque nouvelle est retenue et proposée ensuite",
                  b["marque"] == "Ma Marque Maison" and "Ma Marque Maison" in etat(port)["marques"])
         verifier("les marques de base sont proposées", {"Bambu Lab", "eSUN", "Polymaker"} <= set(etat(port)["marques"]))
